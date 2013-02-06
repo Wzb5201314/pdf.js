@@ -87,6 +87,153 @@ var Stream = (function StreamClosure() {
   return Stream;
 })();
 
+var ChunkedStream = (function ChunkedStreamClosure() {
+  function ChunkedStream(length) {
+    this.bytes = new Uint8Array(length);
+    this.start = 0;
+    this.pos = 0;
+    this.end = length;
+    //this.blockSize = blockSize;
+    //this.blocksFilled = [];
+    this.missingRanges = [[this.start, this.end]];
+  }
+
+  // required methods for a stream. if a particular stream does not
+  // implement these, an error should be thrown
+  ChunkedStream.prototype = {
+
+    onReceiveData: function(buffer, start) {
+      if (!buffer.length) {
+        return;
+      }
+
+      var newMissingRanges = [];
+      var prevMissingRange;
+      var end = start + buffer.length;
+      var found = false;
+      for (var idx = 0; idx < this.missingRanges.length; ++idx) {
+        var missingRange = this.missingRanges[idx];
+        var missingStart = missingRange[0];
+        var missingEnd = missingRange[1];
+        if (end <= missingEnd && !found) {
+          assert(start >= missingStart, 'Range [' + start + ', ' + end +
+              ') not fully contained in missing range');
+          if (start === missingStart && end === missingEnd) {
+            // Fully covered this range
+          } else if (start === missingStart) {
+            newMissingRanges.push([end, missingEnd]);
+          } else if (end === missingEnd) {
+            newMissingRanges.push([missingStart, start]);
+          } else {
+            newMissingRanges.push([missingStart, start]);
+            newMissingRanges.push([end, missingEnd]);
+          }
+          found = true;
+        } else {
+          newMissingRanges.push([missingStart, missingEnd]);
+        }
+      }
+
+      assert(found, 'Did not find range [' + start + ', ' + end +
+          ') in list of missing ranges');
+
+      this.missingRanges = newMissingRanges;
+      this.bytes.set(new Uint8Array(buffer), start);
+    },
+
+    ensureRange: function ChunkedStream_ensureRange(start, end) {
+      for (var idx = 0; idx < this.missingRanges.length; ++idx) {
+        var missingRange = this.missingRanges[idx];
+        var missingStart = missingRange[0];
+        var missingEnd = missingRange[1];
+        if (start >= missingStart && start < missingEnd ||
+            end > missingStart && end <= missingEnd) {
+          assert(false, 'Range [' + start + ', ' + end +
+              ') contained in missing range');
+        }
+      }
+    },
+
+    get length() {
+      return this.end - this.start;
+    },
+
+    getByte: function ChunkedStream_getByte() {
+      var pos = this.pos;
+      if (pos >= this.end) {
+        return null;
+      }
+      this.ensureRange(pos, pos + 1);
+      return this.bytes[this.pos++];
+    },
+
+    // returns subarray of original buffer
+    // should only be read
+    getBytes: function ChunkedStream_getBytes(length) {
+      var bytes = this.bytes;
+      var pos = this.pos;
+      var strEnd = this.end;
+
+      if (!length) {
+        this.ensureRange(pos, strEnd);
+        return bytes.subarray(pos, strEnd);
+      }
+
+      var end = pos + length;
+      if (end > strEnd)
+        end = strEnd;
+      this.ensureRange(pos, end);
+
+      this.pos = end;
+      return bytes.subarray(pos, end);
+    },
+
+    lookChar: function ChunkedStream_lookChar() {
+      var pos = this.pos;
+      if (pos >= this.end)
+        return null;
+      this.ensureRange(pos, pos + 1);
+      return String.fromCharCode(this.bytes[pos]);
+    },
+
+    getChar: function ChunkedStream_getChar() {
+      var pos = this.pos;
+      if (pos >= this.end)
+        return null;
+      this.ensureRange(pos, pos + 1);
+      return String.fromCharCode(this.bytes[this.pos++]);
+    },
+
+    skip: function ChunkedStream_skip(n) {
+      if (!n)
+        n = 1;
+      this.pos += n;
+    },
+
+    reset: function ChunkedStream_reset() {
+      this.pos = this.start;
+    },
+
+    moveStart: function ChunkedStream_moveStart() {
+      this.start = this.pos;
+    },
+
+    makeSubStream: function ChunkedStream_makeSubStream(start, length, dict) {
+      function ChunkedStreamSubstream() {}
+      ChunkedStreamSubstream.prototype = Object.create(this);
+      var subStream = new ChunkedStreamSubstream();
+      subStream.pos = subStream.start = start;
+      subStream.end = start + length || this.end;
+      subStream.dict = dict;
+      return subStream;
+    },
+
+    isStream: true
+  };
+
+  return ChunkedStream;
+})();
+
 var StringStream = (function StringStreamClosure() {
   function StringStream(str) {
     var length = str.length;
