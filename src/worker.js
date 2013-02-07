@@ -20,6 +20,10 @@
 
 'use strict';
 
+var counter1_ = 0;
+var pdfUrl_;
+var pdfStream_;
+
 function MessageHandler(name, comObj) {
   this.name = name;
   this.comObj = comObj;
@@ -114,8 +118,19 @@ var WorkerMessageHandler = {
       // processing the content of the pdf.
       var pdfPassword = pdfModelSource.password;
       try {
-        pdfModel = new PDFDocument(new Stream(pdfData), pdfPassword);
+        var stream;
+        if (pdfData instanceof ChunkedStream) {
+          stream = pdfData;
+        } else {
+          stream = new Stream(pdfData);
+        }
+        pdfModel = new PDFDocument(stream, pdfPassword);
       } catch (e) {
+
+        if (pdfData instanceof ChunkedStream) {
+          throw e;
+        }
+
         if (e instanceof PasswordException) {
           if (e.code === 'needpassword') {
             handler.send('NeedPassword', {
@@ -157,7 +172,7 @@ var WorkerMessageHandler = {
         metadata: pdfModel.catalog.metadata,
         encrypted: !!pdfModel.xref.encrypt
       };
-      handler.send('GetDoc', {pdfInfo: doc});
+      return doc;
     }
 
     handler.on('test', function wphSetupTest(data) {
@@ -180,49 +195,116 @@ var WorkerMessageHandler = {
       var source = data.source;
       if (source.data) {
         // the data is array, instantiating directly from it
-        loadDocument(source.data, source);
+        var doc = loadDocument(source.data, source);
+        handler.send('GetDoc', {pdfInfo: doc});
         return;
       }
+      pdfUrl_ = source.url;
 
-      PDFJS.getPdf(
-        {
-          url: source.url,
-          progress: function getPDFProgress(evt) {
-            handler.send('DocProgress', {
-              loaded: evt.loaded,
-              total: evt.lengthComputable ? evt.total : void(0)
-            });
+      var self = handler;
+      var getPdfRetry = function(rangeStart, rangeEnd) {
+        PDFJS.getPdf(
+          {
+            range: [rangeStart, rangeEnd],
+            url: source.url,
+            progress: function getPDFProgress(evt) {
+              handler.send('DocProgress', {
+                loaded: evt.loaded,
+                total: evt.lengthComputable ? evt.total : void(0)
+              });
+            },
+            error: function getPDFError(e) {
+              if (e.target.status == 404) {
+                handler.send('MissingPDF', {
+                  exception: new MissingPDFException(
+                    'Missing PDF \"' + source.url + '\".')});
+              } else {
+                handler.send('DocError', 'Unexpected server response (' +
+                              e.target.status + ') while retrieving PDF \"' +
+                              source.url + '\".');
+              }
+            },
+            headers: source.httpHeaders
           },
-          error: function getPDFError(e) {
-            if (e.target.status == 404) {
-              handler.send('MissingPDF', {
-                exception: new MissingPDFException(
-                  'Missing PDF \"' + source.url + '\".')});
-            } else {
-              handler.send('DocError', 'Unexpected server response (' +
-                            e.target.status + ') while retrieving PDF \"' +
-                            source.url + '\".');
+          function getPDFLoad(data) {
+            if (!pdfStream_) {
+              pdfStream_ = new ChunkedStream(data.length);
             }
-          },
-          headers: source.httpHeaders
-        },
-        function getPDFLoad(data) {
-          loadDocument(data, source);
-        });
+            var chunkStart = data.context.range[0];
+            var chunkEnd = data.context.range[1];
+            self.getPdfContext = data.context;
+            var length = data.length;
+            pdfStream_.onReceiveData(data.chunk, chunkStart);
+            var doc;
+            try {
+              doc = loadDocument(pdfStream_, source);
+            } catch(e) {
+              if (chunkStart === 0) {
+                getPdfRetry(length - 1337, length);
+              } else {
+                getPdfRetry(chunkStart - 1337, chunkStart);
+              }
+            }
+            if (doc) {
+              handler.send('GetDoc', {pdfInfo: doc});
+            }
+          }
+        );
+      };
+      var rangeStart = 0;
+      var rangeEnd = 1337;
+      getPdfRetry(rangeStart, rangeEnd);
     });
 
     handler.on('GetPageRequest', function wphSetupGetPage(data) {
       var pageNumber = data.pageIndex + 1;
-      var pdfPage = pdfModel.getPage(pageNumber);
-      var encrypt = pdfModel.xref.encrypt;
-      var page = {
-        pageIndex: data.pageIndex,
-        rotate: pdfPage.rotate,
-        ref: pdfPage.ref,
-        view: pdfPage.view,
-        disableTextLayer: encrypt ? encrypt.disableTextLayer : false
+      var pdfPage;
+
+      var getPageRequestRetry = function() {
+        var page;
+        try {
+          pdfPage = pdfModel.getPage(pageNumber);
+
+          var encrypt = pdfModel.xref.encrypt;
+          page = {
+            pageIndex: data.pageIndex,
+            rotate: pdfPage.rotate,
+            ref: pdfPage.ref,
+            view: pdfPage.view,
+            disableTextLayer: encrypt ? encrypt.disableTextLayer : false
+          };
+        } catch(e) {
+          if (!(e instanceof MissingDataError)) {
+            throw e;
+          }
+
+          (function() {
+            var self = handler;
+            var rangeStart = e.start;
+            var rangeEnd = e.end;
+            //self.getPdfContext.range[0] = rangeStart;
+            //self.getPdfContext.range[1] = rangeEnd;
+            PDFJS.getPdf(
+              {
+                url: self.getPdfContext.url,
+                range: [rangeStart, rangeEnd]
+              },
+              function getPDFLoad(data) {
+                var chunkStart = data.context.range[0];
+                var chunkEnd = data.context.range[1];
+                pdfStream_.onReceiveData(data.chunk, chunkStart);
+                getPageRequestRetry();
+              }
+            );
+          })();
+        }
+        if (page) {
+          console.log('GETPAGE');
+          handler.send('GetPage', {pageInfo: page});
+        }
       };
-      handler.send('GetPage', {pageInfo: page});
+      getPageRequestRetry();
+
     });
 
     handler.on('GetData', function wphSetupGetData(data, promise) {
@@ -249,57 +331,84 @@ var WorkerMessageHandler = {
 
       var dependency = [];
       var operatorList = null;
-      try {
-        var page = pdfModel.getPage(pageNum);
-        // Pre compile the pdf page and fetch the fonts/images.
-        operatorList = page.getOperatorList(handler, dependency);
-      } catch (e) {
-        var minimumStackMessage =
-            'worker.js: while trying to getPage() and getOperatorList()';
+      var renderPageRequestRetry = function() {
+        try {
+          var page = pdfModel.getPage(pageNum);
+          // Pre compile the pdf page and fetch the fonts/images.
+          operatorList = page.getOperatorList(handler, dependency);
 
-        var wrappedException;
+          log('page=%d - getOperatorList: time=%dms, len=%d', pageNum,
+                                  Date.now() - start, operatorList.fnArray.length);
 
-        // Turn the error into an obj that can be serialized
-        if (typeof e === 'string') {
-          wrappedException = {
-            message: e,
-            stack: minimumStackMessage
-          };
-        } else if (typeof e === 'object') {
-          wrappedException = {
-            message: e.message || e.toString(),
-            stack: e.stack || minimumStackMessage
-          };
-        } else {
-          wrappedException = {
-            message: 'Unknown exception type: ' + (typeof e),
-            stack: minimumStackMessage
-          };
+          // Filter the dependecies for fonts.
+          var fonts = {};
+          for (var i = 0, ii = dependency.length; i < ii; i++) {
+            var dep = dependency[i];
+            if (dep.indexOf('g_font_') === 0) {
+              fonts[dep] = true;
+            }
+          }
+          handler.send('RenderPage', {
+            pageIndex: data.pageIndex,
+            operatorList: operatorList,
+            depFonts: Object.keys(fonts)
+          });
+        } catch (e) {
+          var minimumStackMessage =
+              'worker.js: while trying to getPage() and getOperatorList()';
+
+          if (e instanceof MissingDataError) {
+            (function() {
+              var self = handler;
+              var rangeStart = e.start;
+              var rangeEnd = e.end;
+              console.log('here', rangeStart, rangeEnd);
+              //self.getPdfContext.range[0] = rangeStart;
+              //self.getPdfContext.range[1] = rangeEnd;
+              PDFJS.getPdf(
+                {
+                  url: pdfUrl_,
+                  range: [rangeStart, rangeEnd]
+                },
+                function getPDFLoad(data) {
+                  var chunkStart = data.context.range[0];
+                  var chunkEnd = data.context.range[1];
+                  pdfStream_.onReceiveData(data.chunk, chunkStart);
+                  renderPageRequestRetry();
+                }
+              );
+            })();
+          } else {
+            var wrappedException;
+
+            // Turn the error into an obj that can be serialized
+            if (typeof e === 'string') {
+              wrappedException = {
+                message: e,
+                stack: minimumStackMessage
+              };
+            } else if (typeof e === 'object') {
+              wrappedException = {
+                message: e.message || e.toString(),
+                stack: e.stack || minimumStackMessage
+              };
+            } else {
+              wrappedException = {
+                message: 'Unknown exception type: ' + (typeof e),
+                stack: minimumStackMessage
+              };
+            }
+
+            handler.send('PageError', {
+              pageNum: pageNum,
+              error: wrappedException
+            });
+            return;
+          }
         }
+      };
+      renderPageRequestRetry();
 
-        handler.send('PageError', {
-          pageNum: pageNum,
-          error: wrappedException
-        });
-        return;
-      }
-
-      log('page=%d - getOperatorList: time=%dms, len=%d', pageNum,
-                              Date.now() - start, operatorList.fnArray.length);
-
-      // Filter the dependecies for fonts.
-      var fonts = {};
-      for (var i = 0, ii = dependency.length; i < ii; i++) {
-        var dep = dependency[i];
-        if (dep.indexOf('g_font_') === 0) {
-          fonts[dep] = true;
-        }
-      }
-      handler.send('RenderPage', {
-        pageIndex: data.pageIndex,
-        operatorList: operatorList,
-        depFonts: Object.keys(fonts)
-      });
     }, this);
 
     handler.on('GetTextContent', function wphExtractText(data, promise) {

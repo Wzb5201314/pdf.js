@@ -176,7 +176,12 @@ var PartialEvaluator = (function PartialEvaluatorClosure() {
         try {
           translated = this.translateFont(font, xref, resources,
                                           dependency);
+          debugger
         } catch (e) {
+          if (e instanceof MissingDataError) {
+            font.loadedName = undefined;
+            throw e;
+          }
           translated = new ErrorFont(e instanceof Error ? e.message : e);
         }
         font.translated = translated;

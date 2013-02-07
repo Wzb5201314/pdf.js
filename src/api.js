@@ -342,6 +342,7 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       this.stats.time('Font Loading');
       // Convert the font names to the corresponding font obj.
       var fontObjs = [];
+      debugger
       for (var i = 0, ii = fonts.length; i < ii; i++) {
         var obj = this.commonObjs.getData(fonts[i]);
         if (obj.error) {
@@ -594,10 +595,12 @@ var WorkerTransport = (function WorkerTransportClosure() {
             // At this point, only the font object is created but the font is
             // not yet attached to the DOM. This is done in `FontLoader.bind`.
             var font;
-            if ('error' in exportedData)
+            if ('error' in exportedData) {
+              debugger
               font = new ErrorFont(exportedData.error);
-            else
+            } else {
               font = new Font(exportedData);
+            }
             this.commonObjs.resolve(id, font);
             break;
           default:

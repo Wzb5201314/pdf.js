@@ -1261,6 +1261,9 @@ var PDFView = {
       container.removeChild(container.lastChild);
 
     var pagesCount = pdfDocument.numPages;
+    // debugger
+    pagesCount = 3;
+
     var id = pdfDocument.fingerprint;
     document.getElementById('numPages').textContent =
       mozL10n.get('page_of', {pageCount: pagesCount}, 'of {{pageCount}}');
@@ -2162,6 +2165,7 @@ var PageView = function pageView(container, pdfPage, id, scale,
         pageViewDrawCallback(null);
       },
       function pdfPageRenderError(error) {
+        debugger
         pageViewDrawCallback(error);
       }
     );

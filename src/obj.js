@@ -322,7 +322,7 @@ var Catalog = (function CatalogClosure() {
     },
     getPage: function Catalog_getPage(n) {
       var pageCache = this.pageCache;
-      if (!pageCache) {
+      if (!pageCache || !pageCache[n - 1]) {
         pageCache = this.pageCache = [];
         this.traverseKids(this.toplevelPagesDict);
       }

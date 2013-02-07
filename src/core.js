@@ -67,7 +67,8 @@ function getPdf(arg, callback) {
   xhr.mozResponseType = xhr.responseType = 'arraybuffer';
 
   var protocol = params.url.substring(0, params.url.indexOf(':') + 1);
-  xhr.expected = (protocol === 'http:' || protocol === 'https:') ? 200 : 0;
+  //xhr.expected = (protocol === 'http:' || protocol === 'https:') ? 200 : 0;
+  xhr.expected = 206;
 
   if ('progress' in params)
     xhr.onprogress = params.progress || undefined;
@@ -83,12 +84,33 @@ function getPdf(arg, callback) {
     };
   }
 
+  var range = params.range;
+  xhr.setRequestHeader('Range', 'bytes=' + range[0] + '-' + (range[1] - 1));
+
+  xhr.getArrayBuffer = function getPdfGetArrayBuffer() {
+    var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
+                xhr.responseArrayBuffer || xhr.response);
+    if (typeof data !== 'string') {
+      return data;
+    }
+    var length = data.length;
+    var buffer = new Uint8Array(length);
+    for (var i = 0; i < length; i++) {
+      buffer[i] = data.charCodeAt(i) & 0xFF;
+    }
+    return buffer.buffer;
+  };
+
   xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
     if (xhr.readyState === 4) {
       if (xhr.status === xhr.expected) {
-        var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
-                    xhr.responseArrayBuffer || xhr.response);
-        callback(data);
+        //var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
+        //            xhr.responseArrayBuffer || xhr.response);
+        var data = xhr.getArrayBuffer();
+        var rangeHeader = xhr.getResponseHeader('Content-Range');
+        var totalLength = parseInt(rangeHeader.split('/')[1], 10);
+
+        callback({ chunk: data, context: arg, length: totalLength });
       } else if (params.error && !calledErrorBack) {
         calledErrorBack = true;
         params.error(e);
@@ -524,8 +546,9 @@ var PDFDocument = (function PDFDocumentClosure() {
     },
     setup: function PDFDocument_setup(password) {
       this.checkHeader();
+      var startXRef = this.startXRef;
       var xref = new XRef(this.stream,
-                          this.startXRef,
+                          startXRef,
                           this.mainXRefEntriesOffset,
                           password);
       this.xref = xref;

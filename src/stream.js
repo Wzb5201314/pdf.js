@@ -19,6 +19,11 @@
 
 'use strict';
 
+function MissingDataError(start, end) {
+  this.start = start;
+  this.end = end;
+}
+
 var Stream = (function StreamClosure() {
   function Stream(arrayBuffer, start, length, dict) {
     this.bytes = arrayBuffer instanceof Uint8Array ? arrayBuffer :
@@ -36,6 +41,7 @@ var Stream = (function StreamClosure() {
       return this.end - this.start;
     },
     getByte: function Stream_getByte() {
+      //throw new Error('getByte');
       if (this.pos >= this.end)
         return null;
       return this.bytes[this.pos++];
@@ -43,6 +49,7 @@ var Stream = (function StreamClosure() {
     // returns subarray of original buffer
     // should only be read
     getBytes: function Stream_getBytes(length) {
+      //throw new Error('getBytes');
       var bytes = this.bytes;
       var pos = this.pos;
       var strEnd = this.end;
@@ -58,11 +65,13 @@ var Stream = (function StreamClosure() {
       return bytes.subarray(pos, end);
     },
     lookChar: function Stream_lookChar() {
+      //throw new Error('lookChar');
       if (this.pos >= this.end)
         return null;
       return String.fromCharCode(this.bytes[this.pos]);
     },
     getChar: function Stream_getChar() {
+      //throw new Error('getChar');
       if (this.pos >= this.end)
         return null;
       return String.fromCharCode(this.bytes[this.pos++]);
@@ -95,7 +104,8 @@ var ChunkedStream = (function ChunkedStreamClosure() {
     this.end = length;
     //this.blockSize = blockSize;
     //this.blocksFilled = [];
-    this.missingRanges = [[this.start, this.end]];
+    //this.missingRanges = [[this.start, this.end]];
+    this.filled = {};
   }
 
   // required methods for a stream. if a particular stream does not
@@ -103,53 +113,68 @@ var ChunkedStream = (function ChunkedStreamClosure() {
   ChunkedStream.prototype = {
 
     onReceiveData: function(buffer, start) {
-      if (!buffer.length) {
+      var bufferLength = buffer.byteLength;
+      if (!bufferLength) {
         return;
       }
+      var end = start + bufferLength;
 
-      var newMissingRanges = [];
-      var prevMissingRange;
-      var end = start + buffer.length;
-      var found = false;
-      for (var idx = 0; idx < this.missingRanges.length; ++idx) {
-        var missingRange = this.missingRanges[idx];
-        var missingStart = missingRange[0];
-        var missingEnd = missingRange[1];
-        if (end <= missingEnd && !found) {
-          assert(start >= missingStart, 'Range [' + start + ', ' + end +
-              ') not fully contained in missing range');
-          if (start === missingStart && end === missingEnd) {
-            // Fully covered this range
-          } else if (start === missingStart) {
-            newMissingRanges.push([end, missingEnd]);
-          } else if (end === missingEnd) {
-            newMissingRanges.push([missingStart, start]);
-          } else {
-            newMissingRanges.push([missingStart, start]);
-            newMissingRanges.push([end, missingEnd]);
-          }
-          found = true;
-        } else {
-          newMissingRanges.push([missingStart, missingEnd]);
-        }
+      //var newMissingRanges = [];
+      //var prevMissingRange;
+      //var found = false;
+      //for (var idx = 0; idx < this.missingRanges.length; ++idx) {
+      //  var missingRange = this.missingRanges[idx];
+      //  var missingStart = missingRange[0];
+      //  var missingEnd = missingRange[1];
+      //  if (end <= missingEnd && !found) {
+      //    if (start < missingStart) {
+      //      //warn('Range [' + start + ', ' + end +
+      //      //  ') not fully contained in missing range');
+      //    }
+      //    if (start === missingStart && end === missingEnd) {
+      //      // Fully covered this range
+      //    } else if (start === missingStart) {
+      //      newMissingRanges.push([end, missingEnd]);
+      //    } else if (end === missingEnd) {
+      //      newMissingRanges.push([missingStart, start]);
+      //    } else {
+      //      newMissingRanges.push([missingStart, start]);
+      //      newMissingRanges.push([end, missingEnd]);
+      //    }
+      //    found = true;
+      //  } else {
+      //    newMissingRanges.push([missingStart, missingEnd]);
+      //  }
+      //}
+
+      //if (!found) {
+      //  debugger
+      //  warn('Did not find range [' + start + ', ' + end +
+      //      ') in list of missing ranges');
+      //}
+
+      //this.missingRanges = newMissingRanges;
+      for (var i = start; i < end; ++i) {
+        this.filled[i] = true;
       }
-
-      assert(found, 'Did not find range [' + start + ', ' + end +
-          ') in list of missing ranges');
-
-      this.missingRanges = newMissingRanges;
       this.bytes.set(new Uint8Array(buffer), start);
     },
 
     ensureRange: function ChunkedStream_ensureRange(start, end) {
-      for (var idx = 0; idx < this.missingRanges.length; ++idx) {
-        var missingRange = this.missingRanges[idx];
-        var missingStart = missingRange[0];
-        var missingEnd = missingRange[1];
-        if (start >= missingStart && start < missingEnd ||
-            end > missingStart && end <= missingEnd) {
-          assert(false, 'Range [' + start + ', ' + end +
-              ') contained in missing range');
+      //for (var idx = 0; idx < this.missingRanges.length; ++idx) {
+      //  var missingRange = this.missingRanges[idx];
+      //  var missingStart = missingRange[0];
+      //  var missingEnd = missingRange[1];
+      //  if (start >= missingStart && start < missingEnd ||
+      //      end > missingStart && end <= missingEnd) {
+      //    //warn('Range [' + start + ', ' + end +
+      //    //    ') contained in missing range');
+      //    throw new MissingDataError(start, end);
+      //  }
+      //}
+      for (var i = start; i < end; ++i) {
+        if (!(i in this.filled)) {
+          throw new MissingDataError(start, end);
         }
       }
     },

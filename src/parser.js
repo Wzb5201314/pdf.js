@@ -481,12 +481,14 @@ var Lexer = (function LexerClosure() {
           if (isFirstHex) {
             firstDigit = toHexDigit(ch);
             if (firstDigit === -1) {
+              debugger
               warn('Ignoring invalid character "' + ch + '" in hex string');
               continue;
             }
           } else {
             secondDigit = toHexDigit(ch);
             if (secondDigit === -1) {
+              debugger
               warn('Ignoring invalid character "' + ch + '" in hex string');
               continue;
             }
@@ -531,6 +533,7 @@ var Lexer = (function LexerClosure() {
           return Cmd.get(ch);
         // hex string or dict punctuation
         case '<':
+          var position = stream.pos;
           ch = stream.lookChar();
           if (ch == '<') {
             // dict punctuation
