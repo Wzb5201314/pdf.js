@@ -21,6 +21,8 @@
 
 'use strict';
 
+var BLOCK_SIZE = 4000;
+
 var globalScope = (typeof window === 'undefined') ? this : window;
 
 var isWorker = (typeof window == 'undefined');
@@ -85,7 +87,10 @@ function getPdf(arg, callback) {
   }
 
   var range = params.range;
+  range[0] = range[0] - range[0] % BLOCK_SIZE;
+  range[1] = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
   xhr.setRequestHeader('Range', 'bytes=' + range[0] + '-' + (range[1] - 1));
+  console.log('range', range[0], range[1]);
 
   xhr.getArrayBuffer = function getPdfGetArrayBuffer() {
     var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||

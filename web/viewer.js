@@ -1262,7 +1262,7 @@ var PDFView = {
 
     var pagesCount = pdfDocument.numPages;
     // debugger
-    pagesCount = 3;
+    //pagesCount = 3;
 
     var id = pdfDocument.fingerprint;
     document.getElementById('numPages').textContent =
@@ -2165,7 +2165,6 @@ var PageView = function pageView(container, pdfPage, id, scale,
         pageViewDrawCallback(null);
       },
       function pdfPageRenderError(error) {
-        debugger
         pageViewDrawCallback(error);
       }
     );

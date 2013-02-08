@@ -97,27 +97,26 @@ var Stream = (function StreamClosure() {
 })();
 
 var ChunkedStream = (function ChunkedStreamClosure() {
-  function ChunkedStream(length) {
+  function ChunkedStream(length, blockSize) {
     this.bytes = new Uint8Array(length);
     this.start = 0;
     this.pos = 0;
     this.end = length;
-    //this.blockSize = blockSize;
-    //this.blocksFilled = [];
+    this.blockSize = blockSize;
+    this.blocksFilled = [];
     //this.missingRanges = [[this.start, this.end]];
-    this.filled = {};
   }
 
   // required methods for a stream. if a particular stream does not
   // implement these, an error should be thrown
   ChunkedStream.prototype = {
 
-    onReceiveData: function(buffer, start) {
-      var bufferLength = buffer.byteLength;
-      if (!bufferLength) {
-        return;
-      }
-      var end = start + bufferLength;
+    onReceiveData: function(buffer, offset) {
+      //var bufferLength = buffer.byteLength;
+      //if (!bufferLength) {
+      //  return;
+      //}
+      //var end = start + bufferLength;
 
       //var newMissingRanges = [];
       //var prevMissingRange;
@@ -154,10 +153,22 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       //}
 
       //this.missingRanges = newMissingRanges;
-      for (var i = start; i < end; ++i) {
-        this.filled[i] = true;
+      //for (var i = start; i < end; ++i) {
+      //  this.filled[i] = true;
+      //}
+      //this.bytes.set(new Uint8Array(buffer), start);
+
+      this.bytes.set(new Uint8Array(buffer), offset);
+      var blockSize = this.blockSize;
+      var end = offset + buffer.byteLength;
+      var startBlock = Math.floor(offset / blockSize);
+      var endBlock = Math.floor((end - 1) / blockSize) + 1;
+      //var endBlock = end < this.end ? Math.floor(end / blockSize) :
+      //                                Math.ceil(this.end / blockSize);
+      var filled = this.blocksFilled;
+      for (var i = startBlock; i < endBlock; i++) {
+        filled[i] = true;
       }
-      this.bytes.set(new Uint8Array(buffer), start);
     },
 
     ensureRange: function ChunkedStream_ensureRange(start, end) {
@@ -172,8 +183,21 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       //    throw new MissingDataError(start, end);
       //  }
       //}
-      for (var i = start; i < end; ++i) {
-        if (!(i in this.filled)) {
+      //for (var i = start; i < end; ++i) {
+      //  if (!(i in this.filled)) {
+      //    throw new MissingDataError(start, end);
+      //  }
+      //}
+      if (start >= end) {
+        return;
+      }
+
+      var blockSize = this.blockSize;
+      var startBlock = Math.floor(start / blockSize);
+      var endBlock = Math.floor((end - 1) / blockSize) + 1;
+      var filled = this.blocksFilled;
+      for (var i = startBlock; i < endBlock; ++i) {
+        if (!(i in filled)) {
           throw new MissingDataError(start, end);
         }
       }

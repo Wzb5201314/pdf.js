@@ -228,7 +228,7 @@ var WorkerMessageHandler = {
           },
           function getPDFLoad(data) {
             if (!pdfStream_) {
-              pdfStream_ = new ChunkedStream(data.length);
+              pdfStream_ = new ChunkedStream(data.length, BLOCK_SIZE);
             }
             var chunkStart = data.context.range[0];
             var chunkEnd = data.context.range[1];
@@ -240,9 +240,10 @@ var WorkerMessageHandler = {
               doc = loadDocument(pdfStream_, source);
             } catch(e) {
               if (chunkStart === 0) {
-                getPdfRetry(length - 1337, length);
+                var start_ = length - length % BLOCK_SIZE;
+                getPdfRetry(start_, length);
               } else {
-                getPdfRetry(chunkStart - 1337, chunkStart);
+                getPdfRetry(chunkStart - BLOCK_SIZE, chunkStart);
               }
             }
             if (doc) {
@@ -252,7 +253,7 @@ var WorkerMessageHandler = {
         );
       };
       var rangeStart = 0;
-      var rangeEnd = 1337;
+      var rangeEnd = BLOCK_SIZE;
       getPdfRetry(rangeStart, rangeEnd);
     });
 
