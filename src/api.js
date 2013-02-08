@@ -342,7 +342,6 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
       this.stats.time('Font Loading');
       // Convert the font names to the corresponding font obj.
       var fontObjs = [];
-      debugger
       for (var i = 0, ii = fonts.length; i < ii; i++) {
         var obj = this.commonObjs.getData(fonts[i]);
         if (obj.error) {

@@ -22,6 +22,7 @@
 'use strict';
 
 var BLOCK_SIZE = 4000;
+var isLinearized_ = false;
 
 var globalScope = (typeof window === 'undefined') ? this : window;
 
@@ -468,8 +469,11 @@ var PDFDocument = (function PDFDocumentClosure() {
       if (length) {
         try {
           linearization = new Linearization(this.stream);
-          if (linearization.length != length)
+          if (linearization.length != length) {
             linearization = false;
+          } else {
+            isLinearized_ = true;
+          }
         } catch (err) {
           warn('The linearization data is not available ' +
                'or unreadable pdf data is found');

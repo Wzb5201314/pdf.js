@@ -239,12 +239,37 @@ var WorkerMessageHandler = {
             try {
               doc = loadDocument(pdfStream_, source);
             } catch(e) {
-              if (chunkStart === 0) {
-                var start_ = length - length % BLOCK_SIZE;
-                getPdfRetry(start_, length);
-              } else {
-                getPdfRetry(chunkStart - BLOCK_SIZE, chunkStart);
+              if (!(e instanceof MissingDataError)) {
+                throw e;
               }
+              //if (isLinearized_) {
+              //  getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
+              //} else {
+              //  if (chunkStart === 0) {
+              //    var start_ = length - length % BLOCK_SIZE;
+              //    getPdfRetry(start_, length);
+              //  } else {
+              //    getPdfRetry(chunkStart - BLOCK_SIZE, chunkStart);
+              //  }
+              //}
+
+              var rangeStart = e.start;
+              var rangeEnd = e.end;
+              getPdfRetry(rangeStart, rangeEnd);
+              ////self.getPdfContext.range[0] = rangeStart;
+              ////self.getPdfContext.range[1] = rangeEnd;
+              //PDFJS.getPdf(
+              //  {
+              //    url: source.url,
+              //    range: [rangeStart, rangeEnd]
+              //  },
+              //  function getPDFLoad(data) {
+              //    var chunkStart = data.context.range[0];
+              //    var chunkEnd = data.context.range[1];
+              //    pdfStream_.onReceiveData(data.chunk, chunkStart);
+              //    getPageRequestRetry();
+              //  }
+              //);
             }
             if (doc) {
               handler.send('GetDoc', {pdfInfo: doc});

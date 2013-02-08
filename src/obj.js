@@ -633,6 +633,10 @@ var XRef = (function XRefClosure() {
 
         return dict;
       } catch (e) {
+        if (e instanceof MissingDataError) {
+          throw e;
+        }
+
         log('(while reading XRef): ' + e);
       }
 
