@@ -286,6 +286,7 @@ var Catalog = (function CatalogClosure() {
       if (nameDictionaryRef) {
         // reading simple destination dictionary
         obj = nameDictionaryRef;
+        // TODO(mack): use stream.ensureRanges() to ensure all ranges at once
         obj.forEach(function catalogForEach(key, value) {
           if (!value) return;
           dests[key] = fetchDestination(value);
@@ -334,29 +335,39 @@ var Catalog = (function CatalogClosure() {
 })();
 
 var XRef = (function XRefClosure() {
-  function XRef(stream, startXRef, mainXRefEntriesOffset, password) {
+  function XRef(stream, password) {
+
     this.stream = stream;
     this.entries = [];
     this.xrefstms = {};
-    var trailerDict = this.readXRef(startXRef);
-    trailerDict.assignXref(this);
-    this.trailer = trailerDict;
     // prepare the XRef cache
     this.cache = [];
-
-    var encrypt = trailerDict.get('Encrypt');
-    if (encrypt) {
-      var ids = trailerDict.get('ID');
-      var fileId = (ids && ids.length) ? ids[0] : '';
-      this.encrypt = new CipherTransformFactory(encrypt, fileId, password);
-    }
-
-    // get the root dictionary (catalog) object
-    if (!(this.root = trailerDict.get('Root')))
-      error('Invalid root reference');
+    this.currXRefType;
+    this.password = password;
+    this.startXRefQueue = [];
   }
 
   XRef.prototype = {
+    init_: function() {
+      this.readingXRefs = true;
+      var trailerDict = this.readXRef();
+      this.readingXRefs = false;
+      trailerDict.assignXref(this);
+      this.trailer = trailerDict;
+      var encrypt = trailerDict.get('Encrypt');
+      if (encrypt) {
+        var ids = trailerDict.get('ID');
+        var fileId = (ids && ids.length) ? ids[0] : '';
+        this.encrypt = new CipherTransformFactory(encrypt, fileId, this.password);
+      }
+
+      // get the root dictionary (catalog) object
+      if (!(this.root = trailerDict.get('Root'))) {
+        debugger
+        error('Invalid root reference');
+      }
+    },
+
     readXRefTable: function XRef_readXRefTable(parser) {
       // Example of cross-reference table:
       // xref
@@ -560,7 +571,9 @@ var XRef = (function XRefClosure() {
       }
       // reading XRef streams
       for (var i = 0, ii = xrefStms.length; i < ii; ++i) {
-          this.readXRef(xrefStms[i], true);
+        this.startXRefQueue.push([xrefStms[i], true]);
+        this.readXRef();
+        //this.readXRef(xrefStms[i], true);
       }
       // finding main trailer
       var dict;
@@ -584,54 +597,76 @@ var XRef = (function XRefClosure() {
       // calling error() would reject worker with an UnknownErrorException.
       throw new InvalidPDFException('Invalid PDF structure');
     },
-    readXRef: function XRef_readXRef(startXRef, recoveryMode) {
+    //readXRef: function XRef_readXRef(startXRef, recoveryMode) {
+    readXRef: function XRef_readXRef() {
       var stream = this.stream;
-      stream.pos = startXRef;
 
       try {
-        var parser = new Parser(new Lexer(stream), true, null);
-        var obj = parser.getObj();
-        var dict;
+        while (this.startXRefQueue.length) {
+          var startXRef = this.startXRefQueue[0][0];
+          var recoveryMode = this.startXRefQueue[0][1];
+          stream.pos = startXRef;
 
-        // Get dictionary
-        if (isCmd(obj, 'xref')) {
-          // Parse end-of-file XRef
-          dict = this.readXRefTable(parser);
+          var parser = new Parser(new Lexer(stream), true, null);
+          var obj = parser.getObj();
+          var dict;
 
-          // Recursively get other XRefs 'XRefStm', if any
-          obj = dict.get('XRefStm');
-          if (isInt(obj)) {
-            var pos = obj;
-            // ignore previously loaded xref streams
-            // (possible infinite recursion)
-            if (!(pos in this.xrefstms)) {
-              this.xrefstms[pos] = 1;
-              this.readXRef(pos);
+          // Get dictionary
+          if (isCmd(obj, 'xref')) {
+            this.currXRefType = 'table';
+
+            // Parse end-of-file XRef
+            dict = this.readXRefTable(parser);
+            if (!this.topDict) {
+              this.topDict = dict;
             }
+
+            // Recursively get other XRefs 'XRefStm', if any
+            obj = dict.get('XRefStm');
+            if (isInt(obj)) {
+              var pos = obj;
+              // ignore previously loaded xref streams
+              // (possible infinite recursion)
+              if (!(pos in this.xrefstms)) {
+                this.xrefstms[pos] = 1;
+                this.startXRefQueue.push([pos]);
+                //this.readXRef(pos_);
+              }
+            }
+          } else if (isInt(obj)) {
+            this.currXRefType = 'stream';
+
+            // Parse in-stream XRef
+            if (!isInt(parser.getObj()) ||
+                !isCmd(parser.getObj(), 'obj') ||
+                !isStream(obj = parser.getObj())) {
+              error('Invalid XRef stream');
+            }
+            dict = this.readXRefStream(obj);
+            if (!this.topDict) {
+              this.topDict = dict;
+            }
+
+            if (!dict)
+              error('Failed to read XRef stream');
           }
-        } else if (isInt(obj)) {
-          // Parse in-stream XRef
-          if (!isInt(parser.getObj()) ||
-              !isCmd(parser.getObj(), 'obj') ||
-              !isStream(obj = parser.getObj())) {
-            error('Invalid XRef stream');
+
+          // Recursively get previous dictionary, if any
+          obj = dict.get('Prev');
+          if (isInt(obj)) {
+            //this.readXRef(obj, recoveryMode);
+            this.startXRefQueue.push([obj, recoveryMode]);
+          } else if (isRef(obj)) {
+            // The spec says Prev must not be a reference, i.e. "/Prev NNN"
+            // This is a fallback for non-compliant PDFs, i.e. "/Prev NNN 0 R"
+            //this.readXRef(obj.num, recoveryMode);
+            this.startXRefQueue.push([obj.num, recoveryMode]);
           }
-          dict = this.readXRefStream(obj);
-          if (!dict)
-            error('Failed to read XRef stream');
+
+          this.startXRefQueue.shift();
         }
 
-        // Recursively get previous dictionary, if any
-        obj = dict.get('Prev');
-        if (isInt(obj))
-          this.readXRef(obj, recoveryMode);
-        else if (isRef(obj)) {
-          // The spec says Prev must not be a reference, i.e. "/Prev NNN"
-          // This is a fallback for non-compliant PDFs, i.e. "/Prev NNN 0 R"
-          this.readXRef(obj.num, recoveryMode);
-        }
-
-        return dict;
+        return this.topDict;
       } catch (e) {
         if (e instanceof MissingDataError) {
           throw e;
@@ -640,8 +675,9 @@ var XRef = (function XRefClosure() {
         log('(while reading XRef): ' + e);
       }
 
-      if (recoveryMode)
+      if (recoveryMode) {
         return;
+      }
 
       warn('Indexing all PDF objects');
       return this.indexObjects();

@@ -21,7 +21,7 @@
 
 'use strict';
 
-var BLOCK_SIZE = 4000;
+var BLOCK_SIZE = 256000;
 var isLinearized_ = false;
 
 var globalScope = (typeof window === 'undefined') ? this : window;
@@ -424,8 +424,8 @@ var PDFDocument = (function PDFDocumentClosure() {
   function init(stream, password) {
     assertWellFormed(stream.length > 0, 'stream must have data');
     this.stream = stream;
-    this.setup(password);
-    this.acroForm = this.catalog.catDict.get('AcroForm');
+    var xref = new XRef(this.stream, password);
+    this.xref = xref;
   }
 
   function find(stream, needle, limit, backwards) {
@@ -463,6 +463,11 @@ var PDFDocument = (function PDFDocumentClosure() {
   };
 
   PDFDocument.prototype = {
+    init_: function() {
+      this.setup();
+      this.acroForm = this.catalog.catDict.get('AcroForm');
+    },
+
     get linearization() {
       var length = this.stream.length;
       var linearization = false;
@@ -553,15 +558,14 @@ var PDFDocument = (function PDFDocumentClosure() {
       }
       // May not be a PDF file, continue anyway.
     },
-    setup: function PDFDocument_setup(password) {
+    setup: function PDFDocument_setup() {
       this.checkHeader();
       var startXRef = this.startXRef;
-      var xref = new XRef(this.stream,
-                          startXRef,
-                          this.mainXRefEntriesOffset,
-                          password);
-      this.xref = xref;
-      this.catalog = new Catalog(xref);
+      if (!this.xref.startXRefQueue.length) {
+        this.xref.startXRefQueue.push([startXRef]);
+      }
+      this.xref.init_();
+      this.catalog = new Catalog(this.xref);
     },
     get numPages() {
       var linearization = this.linearization;
@@ -594,7 +598,7 @@ var PDFDocument = (function PDFDocumentClosure() {
       }
       return shadow(this, 'getDocumentInfo', docInfo);
     },
-    getFingerprint: function PDFDocument_getFingerprint() {
+    get getFingerprint() {
       var xref = this.xref, fileID;
       if (xref.trailer.has('ID')) {
         fileID = '';

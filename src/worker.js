@@ -111,23 +111,17 @@ MessageHandler.prototype = {
 
 var WorkerMessageHandler = {
   setup: function wphSetup(handler) {
+
     var pdfModel = null;
 
-    function loadDocument(pdfData, pdfModelSource) {
+    function loadDocument(pdfModel) {
       // Create only the model of the PDFDoc, which is enough for
       // processing the content of the pdf.
-      var pdfPassword = pdfModelSource.password;
       try {
-        var stream;
-        if (pdfData instanceof ChunkedStream) {
-          stream = pdfData;
-        } else {
-          stream = new Stream(pdfData);
-        }
-        pdfModel = new PDFDocument(stream, pdfPassword);
+        pdfModel.init_();
       } catch (e) {
 
-        if (pdfData instanceof ChunkedStream) {
+        if (e instanceof MissingDataError) {
           throw e;
         }
 
@@ -163,16 +157,6 @@ var WorkerMessageHandler = {
           return;
         }
       }
-      var doc = {
-        numPages: pdfModel.numPages,
-        fingerprint: pdfModel.getFingerprint(),
-        destinations: pdfModel.catalog.destinations,
-        outline: pdfModel.catalog.documentOutline,
-        info: pdfModel.getDocumentInfo(),
-        metadata: pdfModel.catalog.metadata,
-        encrypted: !!pdfModel.xref.encrypt
-      };
-      return doc;
     }
 
     handler.on('test', function wphSetupTest(data) {
@@ -195,6 +179,7 @@ var WorkerMessageHandler = {
       var source = data.source;
       if (source.data) {
         // the data is array, instantiating directly from it
+        // TODO(mack): broke loadDocument for this flow
         var doc = loadDocument(source.data, source);
         handler.send('GetDoc', {pdfInfo: doc});
         return;
@@ -235,10 +220,45 @@ var WorkerMessageHandler = {
             self.getPdfContext = data.context;
             var length = data.length;
             pdfStream_.onReceiveData(data.chunk, chunkStart);
+
+            var doc;
+
+            if (!pdfModel)  {
+              var stream;
+              var pdfPassword = source.password;
+              var pdfData = pdfStream_;
+              if (pdfData instanceof ChunkedStream) {
+                stream = pdfData;
+              } else {
+                stream = new Stream(pdfData);
+              }
+              pdfModel = new PDFDocument(stream, pdfPassword);
+            }
+
+            if (pdfModel.xref.readingXRefs) {
+              var chunkStr = bytesToString(new Uint8Array(data.chunk));
+              if (!(/>>/.exec(chunkStr))) {
+                getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
+                return;
+              }
+            }
+
+            var exception;
             var doc;
             try {
-              doc = loadDocument(pdfStream_, source);
+              loadDocument(pdfModel);
+              debugger
+              doc = {
+                numPages: pdfModel.numPages,
+                fingerprint: pdfModel.getFingerprint,
+                destinations: pdfModel.catalog.destinations,
+                outline: pdfModel.catalog.documentOutline,
+                info: pdfModel.getDocumentInfo(),
+                metadata: pdfModel.catalog.metadata,
+                encrypted: !!pdfModel.xref.encrypt
+              };
             } catch(e) {
+              exception = true;
               if (!(e instanceof MissingDataError)) {
                 throw e;
               }
