@@ -140,6 +140,29 @@ var RefSet = (function RefSetClosure() {
   return RefSet;
 })();
 
+// TODO(mack):
+var ObjSet = (function ObjSetClosure() {
+  function ObjSet() {
+    this.dict = {};
+  }
+
+  ObjSet.prototype = {
+    has: function ObjSet_has(ref) {
+      return !!this.get(ref);
+    },
+
+    put: function ObjSet_put(ref, obj) {
+      this.dict['R' + ref.num + '.' + ref.gen] = obj;
+    },
+
+    get: function ObjSet_has(ref) {
+      return this.dict['R' + ref.num + '.' + ref.gen];
+    },
+  };
+
+  return ObjSet;
+})();
+
 var Catalog = (function CatalogClosure() {
   function Catalog(xref) {
     this.xref = xref;
@@ -323,17 +346,63 @@ var Catalog = (function CatalogClosure() {
     },
     // TODO(mack): speed up w/ BFS
     init_: function() {
-      this.pageCache = [];
-      this.traverseKids(this.toplevelPagesDict);
+      this.kids = new ObjSet();
+      //this.pageCache = [];
+      //this.traverseKids(this.toplevelPagesDict);
     },
     getPage: function Catalog_getPage(n) {
       var pageCache = this.pageCache;
-      //if (!pageCache || !pageCache[n - 1]) {
-      //  pageCache = this.pageCache = [];
-      //  this.traverseKids(this.toplevelPagesDict);
-      //}
+      if (!pageCache) {
+        pageCache = this.pageCache = [];
+      }
+      var pageIdx = n - 1;
+      if (!pageCache[pageIdx]) {
+        //this.traverseKids(this.toplevelPagesDict, n);
+        debugger
+        this.pageCache[pageIdx] = this.findPage(
+            this.toplevelPagesDict, 0, pageIdx);
+      }
       return this.pageCache[n - 1];
-    }
+    },
+    findPage: function Catalog_findPage(pagesDict, offset, pageIdx) {
+      var kids = pagesDict.get('Kids');
+      assert(isArray(kids), 'page dictionary kids object is not an array');
+
+      for (var i = 0, ii = kids.length; i < ii; ++i) {
+        var kidRef = kids[i];
+        assert(isRef(kidRef), 'page dictionary kid is not a reference');
+
+        var kid = this.kids.get(kidRef);
+        if (!kid) {
+          kid = this.xref.fetch(kidRef);
+          this.kids.put(kidRef, kid);
+        }
+
+        if (isDict(kid, 'Page') || (isDict(kid) && !kid.has('Kids'))) {
+          if (offset === pageIdx) {
+            return new Page(this.xref, pageIdx, kid, kidRef);
+          } else {
+            offset += 1;
+          }
+        } else { // must be a child page dictionary
+          var numChildren = kid.get('Count');
+          var lastChildNum = offset + numChildren;
+
+          assert(
+            isDict(kid),
+            'page dictionary kid reference points to wrong type of object'
+          );
+
+          if (pageIdx < lastChildNum) {
+            return this.findPage(kid, offset, pageIdx);
+          } else {
+            offset += numChildren;
+          }
+        }
+      }
+      assert(false, 'Could not find page index ' + pageIdx);
+      return null;
+    },
   };
 
   return Catalog;
