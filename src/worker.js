@@ -24,6 +24,8 @@ var counter1_ = 0;
 var pdfUrl_;
 var pdfStream_;
 
+var pdfModel;
+
 function MessageHandler(name, comObj) {
   this.name = name;
   this.comObj = comObj;
@@ -111,8 +113,6 @@ MessageHandler.prototype = {
 
 var WorkerMessageHandler = {
   setup: function wphSetup(handler) {
-
-    var pdfModel = null;
 
     function loadDocument(pdfModel) {
       // Create only the model of the PDFDoc, which is enough for
@@ -235,13 +235,23 @@ var WorkerMessageHandler = {
               pdfModel = new PDFDocument(stream, pdfPassword);
             }
 
-            if (pdfModel.xref.readingXRefs) {
-              var chunkStr = bytesToString(new Uint8Array(data.chunk));
-              if (chunkEnd < data.length && !(/>>/.exec(chunkStr))) {
-                getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
-                return;
-              }
-            }
+            // TODO(mack): incoorpate back optimization
+            //if (pdfModel.xref.readingXRefs) {
+            //  var regex;
+            //  if (pdfModel.xref.currXRefType === 'table') {
+            //    regex = new RegExp('>>');
+            //  } else if (pdfModel.xref.currXRefType === 'stream') {
+            //    regex = new RegExp('endobj');
+            //  } else {
+            //    return;
+            //  }
+            //  // TODO(mack): the search chunk needs to also include part of previous chunk
+            //  var chunkStr = bytesToString(new Uint8Array(data.chunk));
+            //  if (chunkEnd < data.length && !(regex.exec(chunkStr))) {
+            //    getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
+            //    return;
+            //  }
+            //}
 
             var exception;
             var doc;
@@ -344,7 +354,6 @@ var WorkerMessageHandler = {
           })();
         }
         if (page) {
-          console.log('GETPAGE');
           handler.send('GetPage', {pageInfo: page});
         }
       };
@@ -358,10 +367,40 @@ var WorkerMessageHandler = {
 
     handler.on('GetAnnotationsRequest', function wphSetupGetAnnotations(data) {
       var pdfPage = pdfModel.getPage(data.pageIndex + 1);
-      handler.send('GetAnnotations', {
-        pageIndex: data.pageIndex,
-        annotations: pdfPage.getAnnotations()
-      });
+
+      var getAnnotationsRequestRetry = function() {
+        var annotations;
+        try {
+          annotations = pdfPage.getAnnotations();
+        } catch(e) {
+          if (!(e instanceof MissingDataError)) {
+            throw e;
+          }
+
+          var self = handler;
+          var rangeStart = e.start;
+          var rangeEnd = e.end;
+          PDFJS.getPdf(
+            {
+              url: self.getPdfContext.url,
+              range: [rangeStart, rangeEnd]
+            },
+            function getPDFLoad(data) {
+              var chunkStart = data.context.range[0];
+              var chunkEnd = data.context.range[1];
+              pdfStream_.onReceiveData(data.chunk, chunkStart);
+              getAnnotationsRequestRetry();
+            }
+          );
+          return;
+        }
+        handler.send('GetAnnotations', {
+          pageIndex: data.pageIndex,
+          annotations: annotations
+        });
+      };
+      getAnnotationsRequestRetry();
+
     });
 
     handler.on('RenderPageRequest', function wphSetupRenderPage(data) {
