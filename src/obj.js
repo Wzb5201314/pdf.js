@@ -344,7 +344,7 @@ var XRef = (function XRefClosure() {
     this.cache = [];
     this.currXRefType;
     this.password = password;
-    this.startXRefQueue = [];
+    this.startXRefQueue;
   }
 
   XRef.prototype = {
@@ -663,7 +663,8 @@ var XRef = (function XRefClosure() {
             this.startXRefQueue.push([obj.num, recoveryMode]);
           }
 
-          this.startXRefQueue.shift();
+          var shiftPos = this.startXRefQueue.shift();
+          console.log('\nshifted off\n', shiftPos);
         }
 
         return this.topDict;

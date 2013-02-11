@@ -23,6 +23,8 @@
 
 var EOF = {};
 
+var getNumberCounter_ = 0;
+
 function isEOF(v) {
   return v == EOF;
 }
@@ -325,6 +327,8 @@ var Lexer = (function LexerClosure() {
 
   Lexer.prototype = {
     getNumber: function Lexer_getNumber(ch) {
+      ++getNumberCounter_;
+
       var floating = false;
       var str = ch;
       var stream = this.stream;

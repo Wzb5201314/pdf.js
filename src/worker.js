@@ -237,7 +237,7 @@ var WorkerMessageHandler = {
 
             if (pdfModel.xref.readingXRefs) {
               var chunkStr = bytesToString(new Uint8Array(data.chunk));
-              if (!(/>>/.exec(chunkStr))) {
+              if (chunkEnd < data.length && !(/>>/.exec(chunkStr))) {
                 getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
                 return;
               }
@@ -247,7 +247,6 @@ var WorkerMessageHandler = {
             var doc;
             try {
               loadDocument(pdfModel);
-              debugger
               doc = {
                 numPages: pdfModel.numPages,
                 fingerprint: pdfModel.getFingerprint,

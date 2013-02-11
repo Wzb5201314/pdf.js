@@ -21,7 +21,9 @@
 
 'use strict';
 
-var BLOCK_SIZE = 256000;
+var BLOCK_SIZE = 128000;
+var totalLength = BLOCK_SIZE;
+
 var isLinearized_ = false;
 
 var globalScope = (typeof window === 'undefined') ? this : window;
@@ -89,9 +91,10 @@ function getPdf(arg, callback) {
 
   var range = params.range;
   range[0] = range[0] - range[0] % BLOCK_SIZE;
-  range[1] = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
-  xhr.setRequestHeader('Range', 'bytes=' + range[0] + '-' + (range[1] - 1));
-  console.log('range', range[0], range[1]);
+  var blockEnd = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
+  var rangeEnd = Math.min(totalLength, blockEnd);
+  xhr.setRequestHeader('Range', 'bytes=' + range[0] + '-' + (rangeEnd - 1));
+  console.log('range', range[0], rangeEnd, getNumberCounter_);
 
   xhr.getArrayBuffer = function getPdfGetArrayBuffer() {
     var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
@@ -114,7 +117,7 @@ function getPdf(arg, callback) {
         //            xhr.responseArrayBuffer || xhr.response);
         var data = xhr.getArrayBuffer();
         var rangeHeader = xhr.getResponseHeader('Content-Range');
-        var totalLength = parseInt(rangeHeader.split('/')[1], 10);
+        totalLength = parseInt(rangeHeader.split('/')[1], 10);
 
         callback({ chunk: data, context: arg, length: totalLength });
       } else if (params.error && !calledErrorBack) {
@@ -561,8 +564,8 @@ var PDFDocument = (function PDFDocumentClosure() {
     setup: function PDFDocument_setup() {
       this.checkHeader();
       var startXRef = this.startXRef;
-      if (!this.xref.startXRefQueue.length) {
-        this.xref.startXRefQueue.push([startXRef]);
+      if (!this.xref.startXRefQueue) {
+        this.xref.startXRefQueue = [[startXRef]];
       }
       this.xref.init_();
       this.catalog = new Catalog(this.xref);
