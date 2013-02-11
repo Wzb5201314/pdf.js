@@ -40,6 +40,8 @@ if (!globalScope.PDFJS) {
   globalScope.PDFJS = {};
 }
 
+var rangeRequests = {};
+
 // getPdf()
 // Convenience function to perform binary Ajax GET
 // Usage: getPdf('http://...', callback)
@@ -50,13 +52,33 @@ if (!globalScope.PDFJS) {
 //               callback)
 function getPdf(arg, callback) {
   var params = arg;
-  if (typeof arg === 'string')
+  if (typeof arg === 'string') {
     params = { url: arg };
-//#if !B2G
-  var xhr = new XMLHttpRequest();
-//#else
-//var xhr = new XMLHttpRequest({mozSystem: true});
-//#endif
+  }
+
+  var range = params.range;
+  range[0] = range[0] - range[0] % BLOCK_SIZE;
+  var blockEnd = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
+  var rangeEnd = Math.min(totalLength, blockEnd);
+  var rangeStr = range[0] + '-' + (rangeEnd - 1);
+
+  // TODO(mack): chrome seems to cache xhr range requests, but firefox does
+  // not; so this is necessary for now
+  // TODO(mack): file bug on bugzilla about whether caching should be happening
+  var alreadyRequested = rangeStr in rangeRequests;
+  if (alreadyRequested) {
+    rangeRequests[rangeStr].push([params, callback, xhr]);
+    return;
+  }
+
+  rangeRequests[rangeStr] = [[params, callback]];
+
+  //#if !B2G
+    var xhr = new XMLHttpRequest();
+  //#else
+  //var xhr = new XMLHttpRequest({mozSystem: true});
+  //#endif
+  //
   xhr.open('GET', params.url);
 
   var headers = params.headers;
@@ -75,26 +97,31 @@ function getPdf(arg, callback) {
   //xhr.expected = (protocol === 'http:' || protocol === 'https:') ? 200 : 0;
   xhr.expected = 206;
 
-  if ('progress' in params)
-    xhr.onprogress = params.progress || undefined;
-
-  var calledErrorBack = false;
-
-  if ('error' in params) {
-    xhr.onerror = function errorBack() {
-      if (!calledErrorBack) {
-        calledErrorBack = true;
-        params.error();
+  xhr.onprogress = function(evt) {
+    var requests = rangeRequests[rangeStr];
+    for (var idx = 0; idx < requests.length; ++idx) {
+      var params = requests[idx][0];
+      if (!('progress' in params)) {
+        continue;
       }
-    };
-  }
+      params.progress(evt);
+    }
+  };
 
-  var range = params.range;
-  range[0] = range[0] - range[0] % BLOCK_SIZE;
-  var blockEnd = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
-  var rangeEnd = Math.min(totalLength, blockEnd);
-  xhr.setRequestHeader('Range', 'bytes=' + range[0] + '-' + (rangeEnd - 1));
-  console.log('range', range[0], rangeEnd, getNumberCounter_);
+  xhr.onerror = function() {
+    var requests = rangeRequests[rangeStr];
+    for (var idx = 0; idx < reuquests.length; ++idx) {
+      var params = requests[idx][0];
+      if (!('error' in params) || params.calledErrorBack) {
+        continue;
+      }
+      params.calledErrorBack = true;
+      params.error();
+    }
+    delete rangeRequests[rangeStr];
+  };
+
+  xhr.setRequestHeader('Range', 'bytes=' + rangeStr);
 
   xhr.getArrayBuffer = function getPdfGetArrayBuffer() {
     var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
@@ -112,20 +139,28 @@ function getPdf(arg, callback) {
 
   xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
     if (xhr.readyState === 4) {
-      if (xhr.status === xhr.expected) {
-        //var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
-        //            xhr.responseArrayBuffer || xhr.response);
-        var data = xhr.getArrayBuffer();
-        var rangeHeader = xhr.getResponseHeader('Content-Range');
-        totalLength = parseInt(rangeHeader.split('/')[1], 10);
+      console.log('range', rangeStr, getNumberCounter_);
+      var requests = rangeRequests[rangeStr];
+      for (var idx = 0; idx < requests.length; ++idx) {
+        var params = requests[idx][0];
+        var callback = requests[idx][1];
+        if (xhr.status === xhr.expected) {
+          //var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
+          //            xhr.responseArrayBuffer || xhr.response);
+          var data = xhr.getArrayBuffer();
+          var rangeHeader = xhr.getResponseHeader('Content-Range');
+          totalLength = parseInt(rangeHeader.split('/')[1], 10);
 
-        callback({ chunk: data, context: arg, length: totalLength });
-      } else if (params.error && !calledErrorBack) {
-        calledErrorBack = true;
-        params.error(e);
+          callback({ chunk: data, context: arg, length: totalLength });
+        } else if (params.error && !params.calledErrorBack) {
+          params.calledErrorBack = true;
+          params.error(e);
+        }
       }
+      delete rangeRequests[rangeStr];
     }
   };
+
   xhr.send(null);
 }
 globalScope.PDFJS.getPdf = getPdf;

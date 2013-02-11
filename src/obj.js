@@ -358,7 +358,6 @@ var Catalog = (function CatalogClosure() {
       var pageIdx = n - 1;
       if (!pageCache[pageIdx]) {
         //this.traverseKids(this.toplevelPagesDict, n);
-        debugger
         this.pageCache[pageIdx] = this.findPage(
             this.toplevelPagesDict, 0, pageIdx);
       }
