@@ -21,7 +21,7 @@
 
 'use strict';
 
-var BLOCK_SIZE = 128000;
+var BLOCK_SIZE = 64000;
 var totalLength = BLOCK_SIZE;
 
 var isLinearized_ = false;
@@ -569,6 +569,7 @@ var PDFDocument = (function PDFDocumentClosure() {
       }
       this.xref.init_();
       this.catalog = new Catalog(this.xref);
+      this.catalog.init_();
     },
     get numPages() {
       var linearization = this.linearization;

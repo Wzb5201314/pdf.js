@@ -321,12 +321,17 @@ var Catalog = (function CatalogClosure() {
       }
       return shadow(this, 'destinations', dests);
     },
+    // TODO(mack): speed up w/ BFS
+    init_: function() {
+      this.pageCache = [];
+      this.traverseKids(this.toplevelPagesDict);
+    },
     getPage: function Catalog_getPage(n) {
       var pageCache = this.pageCache;
-      if (!pageCache || !pageCache[n - 1]) {
-        pageCache = this.pageCache = [];
-        this.traverseKids(this.toplevelPagesDict);
-      }
+      //if (!pageCache || !pageCache[n - 1]) {
+      //  pageCache = this.pageCache = [];
+      //  this.traverseKids(this.toplevelPagesDict);
+      //}
       return this.pageCache[n - 1];
     }
   };
