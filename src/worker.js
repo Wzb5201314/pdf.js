@@ -260,14 +260,20 @@ var WorkerMessageHandler = {
             var doc;
             try {
               loadDocument(pdfModel);
+              var numPages = pdfModel.numPages;
+              var fingerprint = pdfModel.getFingerprint;
+              var outline = pdfModel.catalog.documentOutline;
+              var info = pdfModel.getDocumentInfo();
+              var metadata = pdfModel.catalog.metadata;
+              var encrypted = !!pdfModel.xref.encrypt;
               doc = {
-                numPages: pdfModel.numPages,
-                fingerprint: pdfModel.getFingerprint,
-                destinations: pdfModel.catalog.destinations,
-                outline: pdfModel.catalog.documentOutline,
-                info: pdfModel.getDocumentInfo(),
-                metadata: pdfModel.catalog.metadata,
-                encrypted: !!pdfModel.xref.encrypt
+                numPages: numPages,
+                fingerprint: fingerprint,
+                //destinations: destinations,
+                outline: outline,
+                info: info,
+                metadata: metadata,
+                encrypted: encrypted
               };
             } catch(e) {
               exception = true;
@@ -362,6 +368,40 @@ var WorkerMessageHandler = {
       };
       getPageRequestRetry();
 
+    });
+
+    handler.on('GetDestinationsRequest', function wphSetupGetDestinations() {
+      var getDestinationsRequestRetry = function() {
+        var destinations;
+        try {
+          destinations = pdfModel.catalog.destinations;
+        } catch(e) {
+          if (!(e instanceof MissingDataError)) {
+            throw e;
+          }
+
+          var self = handler;
+          var rangeStart = e.start;
+          var rangeEnd = e.end;
+          //self.getPdfContext.range[0] = rangeStart;
+          //self.getPdfContext.range[1] = rangeEnd;
+          PDFJS.getPdf(
+            {
+              url: self.getPdfContext.url,
+              range: [rangeStart, rangeEnd]
+            },
+            function getPDFLoad(data) {
+              var chunkStart = data.context.range[0];
+              var chunkEnd = data.context.range[1];
+              pdfStream_.onReceiveData(data.chunk, chunkStart);
+              getDestinationsRequestRetry();
+            }
+          );
+          return;
+        }
+        handler.send('GetDestinations', { destinations: destinations });
+      };
+      getDestinationsRequestRetry();
     });
 
     handler.on('GetData', function wphSetupGetData(data, promise) {

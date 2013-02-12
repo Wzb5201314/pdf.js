@@ -110,7 +110,7 @@ function getPdf(arg, callback) {
 
   xhr.onerror = function() {
     var requests = rangeRequests[rangeStr];
-    for (var idx = 0; idx < reuquests.length; ++idx) {
+    for (var idx = 0; idx < requests.length; ++idx) {
       var params = requests[idx][0];
       if (!('error' in params) || params.calledErrorBack) {
         continue;

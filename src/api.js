@@ -114,10 +114,11 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
      * mapping named destinations to reference numbers.
      */
     getDestinations: function PDFDocumentProxy_getDestinations() {
-      var promise = new PDFJS.Promise();
-      var destinations = this.pdfInfo.destinations;
-      promise.resolve(destinations);
-      return promise;
+      //var promise = new PDFJS.Promise();
+      //var destinations = this.pdfInfo.destinations;
+      //promise.resolve(destinations);
+      //return promise;
+      return this.transport.getDestinations();
     },
     /**
      * @return {Promise} A promise that is resolved with an {array} that is a
@@ -567,6 +568,11 @@ var WorkerTransport = (function WorkerTransportClosure() {
         promise.resolve(page);
       }, this);
 
+      messageHandler.on('GetDestinations', function transportPage(data) {
+        var destinations = data.destinations;
+        this.destinationsPromise.resolve(destinations);
+      }, this);
+
       messageHandler.on('GetAnnotations', function transportAnnotations(data) {
         var annotations = data.annotations;
         var promise = this.pageCache[data.pageIndex].annotationsPromise;
@@ -713,6 +719,12 @@ var WorkerTransport = (function WorkerTransportClosure() {
     getAnnotations: function WorkerTransport_getAnnotations(pageIndex) {
       this.messageHandler.send('GetAnnotationsRequest',
         { pageIndex: pageIndex });
+    },
+
+    getDestinations: function WorkerTransport_getDestinations() {
+      this.destinationsPromise = new PDFJS.Promise();
+      this.messageHandler.send('GetDestinationsRequest');
+      return this.destinationsPromise;
     }
   };
   return WorkerTransport;
