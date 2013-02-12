@@ -141,6 +141,7 @@ function getPdf(arg, callback) {
   xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
     if (xhr.readyState === 4) {
       console.log('range', rangeStr, getNumberCounter_);
+      debugger
       var requests = rangeRequests[rangeStr];
       for (var idx = 0; idx < requests.length; ++idx) {
         var params = requests[idx][0];

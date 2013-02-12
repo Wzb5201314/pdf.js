@@ -187,6 +187,7 @@ var WorkerMessageHandler = {
 
       var self = handler;
       var getPdfRetry = function(rangeStart, rangeEnd) {
+        console.log('at 1', rangeStart, rangeEnd);
         PDFJS.getPdf(
           {
             range: [rangeStart, rangeEnd],
@@ -234,21 +235,21 @@ var WorkerMessageHandler = {
             // TODO(mack): incoorpate back optimization
             if (pdfModel.xref.readingXRefs) {
               var regex;
-              if (pdfModel.xref.currXRefType === 'table') {
-                regex = new RegExp('startxref');
-              } else if (pdfModel.xref.currXRefType === 'stream') {
-                regex = new RegExp('endobj');
-              } else {
-                return;
-              }
-              // FIXME(mack): the search chunk needs to also include part of previous chunk
-              var chunkStr = bytesToString(new Uint8Array(data.chunk));
+              if (pdfModel.xref.currXRefType === 'table' || pdfModel.xref.currXRefType === 'stream') {
+                if (pdfModel.xref.currXRefType === 'table') {
+                  regex = new RegExp('startxref');
+                } else if (pdfModel.xref.currXRefType === 'stream') {
+                  regex = new RegExp('endobj');
+                }
+                // FIXME(mack): the search chunk needs to also include part of previous chunk
+                var chunkStr = bytesToString(new Uint8Array(data.chunk));
 
-              var foundEndToken = !!regex.exec(chunkStr);
-              console.log(pdfModel.xref.currXRefType, foundEndToken);
-              if (chunkEnd < data.length && !foundEndToken) {
-                getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
-                return;
+                var foundEndToken = !!regex.exec(chunkStr);
+                console.log(pdfModel.xref.currXRefType, foundEndToken);
+                if (chunkEnd < data.length && !foundEndToken) {
+                  getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
+                  return;
+                }
               }
             }
 
@@ -274,6 +275,7 @@ var WorkerMessageHandler = {
             } catch(e) {
               exception = true;
               if (!(e instanceof MissingDataError)) {
+                debugger
                 throw e;
               }
               //if (isLinearized_) {
@@ -289,6 +291,7 @@ var WorkerMessageHandler = {
 
               var rangeStart = e.start;
               var rangeEnd = e.end;
+              console.log('at 2');
               getPdfRetry(rangeStart, rangeEnd);
               ////self.getPdfContext.range[0] = rangeStart;
               ////self.getPdfContext.range[1] = rangeEnd;
@@ -306,6 +309,7 @@ var WorkerMessageHandler = {
               //);
             }
             if (doc) {
+              console.log('got doc');
               handler.send('GetDoc', {pdfInfo: doc});
             }
           }
