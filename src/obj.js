@@ -436,7 +436,6 @@ var XRef = (function XRefClosure() {
 
       // get the root dictionary (catalog) object
       if (!(this.root = trailerDict.get('Root'))) {
-        debugger
         error('Invalid root reference');
       }
     },

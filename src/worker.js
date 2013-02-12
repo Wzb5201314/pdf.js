@@ -236,22 +236,25 @@ var WorkerMessageHandler = {
             }
 
             // TODO(mack): incoorpate back optimization
-            //if (pdfModel.xref.readingXRefs) {
-            //  var regex;
-            //  if (pdfModel.xref.currXRefType === 'table') {
-            //    regex = new RegExp('>>');
-            //  } else if (pdfModel.xref.currXRefType === 'stream') {
-            //    regex = new RegExp('endobj');
-            //  } else {
-            //    return;
-            //  }
-            //  // TODO(mack): the search chunk needs to also include part of previous chunk
-            //  var chunkStr = bytesToString(new Uint8Array(data.chunk));
-            //  if (chunkEnd < data.length && !(regex.exec(chunkStr))) {
-            //    getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
-            //    return;
-            //  }
-            //}
+            if (pdfModel.xref.readingXRefs) {
+              var regex;
+              if (pdfModel.xref.currXRefType === 'table') {
+                regex = new RegExp('startxref');
+              } else if (pdfModel.xref.currXRefType === 'stream') {
+                regex = new RegExp('endobj');
+              } else {
+                return;
+              }
+              // FIXME(mack): the search chunk needs to also include part of previous chunk
+              var chunkStr = bytesToString(new Uint8Array(data.chunk));
+
+              var foundEndToken = !!regex.exec(chunkStr);
+              console.log(pdfModel.xref.currXRefType, foundEndToken);
+              if (chunkEnd < data.length && !foundEndToken) {
+                getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
+                return;
+              }
+            }
 
             var exception;
             var doc;
