@@ -1261,8 +1261,6 @@ var PDFView = {
       container.removeChild(container.lastChild);
 
     var pagesCount = pdfDocument.numPages;
-    // debugger
-    //pagesCount = 3;
 
     var id = pdfDocument.fingerprint;
     document.getElementById('numPages').textContent =
@@ -1275,86 +1273,118 @@ var PDFView = {
 
     this.pageRotation = 0;
 
-    var pages = this.pages = [];
+    this.pages = [];
     this.pageText = [];
     this.startedTextExtraction = false;
-    var pagesRefMap = {};
-    var thumbnails = this.thumbnails = [];
-    var pagePromises = [];
-    for (var i = 1; i <= pagesCount; i++)
-      pagePromises.push(pdfDocument.getPage(i));
+    this.pagesRefMap = {};
+    this.thumbnails = [];
+
+    // TODO(mack): handle #page=<XXXX>
     var self = this;
-    var pagesPromise = PDFJS.Promise.all(pagePromises);
-    pagesPromise.then(function(promisedPages) {
-      for (var i = 1; i <= pagesCount; i++) {
-        var page = promisedPages[i - 1];
-        var pageView = new PageView(container, page, i, scale,
-                                    page.stats, self.navigateTo.bind(self));
-        var thumbnailView = new ThumbnailView(thumbsView, page, i);
-        bindOnAfterDraw(pageView, thumbnailView);
-
-        pages.push(pageView);
-        thumbnails.push(thumbnailView);
-        var pageRef = page.ref;
-        pagesRefMap[pageRef.num + ' ' + pageRef.gen + ' R'] = i;
-      }
-
-      self.pagesRefMap = pagesRefMap;
-    });
-
-    var destinationsPromise = pdfDocument.getDestinations();
-    destinationsPromise.then(function(destinations) {
-      self.destinations = destinations;
-    });
-
-    // outline and initial view depends on destinations and pagesRefMap
-    var promises = [pagesPromise, destinationsPromise, storePromise,
-                    PDFView.animationStartedPromise];
-    PDFJS.Promise.all(promises).then(function() {
-      pdfDocument.getOutline().then(function(outline) {
-        self.outline = new DocumentOutlineView(outline);
-      });
-
+    var currPage = this.page;
+    pdfDocument.getPage(currPage).then(function(page) {
       var storedHash = null;
       if (store.get('exists', false)) {
-        var page = store.get('page', '1');
+        var pageNum = store.get('page', '1');
         var zoom = store.get('zoom', PDFView.currentScale);
         var left = store.get('scrollLeft', '0');
         var top = store.get('scrollTop', '0');
 
-        storedHash = 'page=' + page + '&zoom=' + zoom + ',' + left + ',' + top;
+        storedHash = 'page=' + pageNum + '&zoom=' + zoom + ',' + left + ',' + top;
       }
 
+      var pageView = new PageView(container, page, self.page, scale,
+                                  page.stats, self.navigateTo.bind(self));
+      var thumbnailView = new ThumbnailView(thumbsView, page, i);
+      bindOnAfterDraw(pageView, thumbnailView);
+
+      // TODO(mack): handle when this.page is not the first page
+      self.pages.push(pageView);
+      self.thumbnails.push(thumbnailView);
       self.setInitialView(storedHash, scale);
-    });
+      var pageRef = page.ref;
+      self.pagesRefMap[pageRef.num + ' ' + pageRef.gen + ' R'] = self.page;
 
-    pdfDocument.getMetadata().then(function(data) {
-      var info = data.info, metadata = data.metadata;
-      self.documentInfo = info;
-      self.metadata = metadata;
 
-      // Provides some basic debug information
-      console.log('PDF ' + pdfDocument.fingerprint + ' [' +
-                  info.PDFFormatVersion + ' ' + (info.Producer || '-') +
-                  ' / ' + (info.Creator || '-') + ']' +
-                  (PDFJS.version ? ' (PDF.js: ' + PDFJS.version + ')' : ''));
-
-      var pdfTitle;
-      if (metadata) {
-        if (metadata.has('dc:title'))
-          pdfTitle = metadata.get('dc:title');
+      var pagePromises = [];
+      for (var i = 1; i <= pagesCount; i++) {
+        if (i === currPage) {
+          continue;
+        }
+        pagePromises.push(pdfDocument.getPage(i));
       }
 
-      if (!pdfTitle && info && info['Title'])
-        pdfTitle = info['Title'];
+      var pagesPromise = PDFJS.Promise.all(pagePromises);
+      pagesPromise.then(function(promisedPages) {
+        for (var i = 1; i <= pagePromises.length; i++) {
+          var page = promisedPages[i - 1];
+          var pageView = new PageView(container, page, i, scale,
+                                      page.stats, self.navigateTo.bind(self));
+          var thumbnailView = new ThumbnailView(thumbsView, page, i);
+          bindOnAfterDraw(pageView, thumbnailView);
 
-      if (pdfTitle)
-        self.setTitle(pdfTitle + ' - ' + document.title);
+          self.pages.push(pageView);
+          self.thumbnails.push(thumbnailView);
+          var pageRef = page.ref;
+          self.pagesRefMap[pageRef.num + ' ' + pageRef.gen + ' R'] = i;
+        }
+      });
 
-      if (info.IsAcroFormPresent) {
-        // AcroForm/XFA was found
-        PDFView.fallback();
-      }
+      var destinationsPromise = pdfDocument.getDestinations();
+      destinationsPromise.then(function(destinations) {
+        self.destinations = destinations;
+      });
+
+      // outline and initial view depends on destinations and pagesRefMap
+      var promises = [pagesPromise, destinationsPromise, storePromise,
+                      PDFView.animationStartedPromise];
+
+      PDFJS.Promise.all(promises).then(function() {
+        pdfDocument.getOutline().then(function(outline) {
+          self.outline = new DocumentOutlineView(outline);
+        });
+
+        //var storedHash = null;
+        //if (store.get('exists', false)) {
+        //  var page = store.get('page', '1');
+        //  var zoom = store.get('zoom', PDFView.currentScale);
+        //  var left = store.get('scrollLeft', '0');
+        //  var top = store.get('scrollTop', '0');
+
+        //  storedHash = 'page=' + page + '&zoom=' + zoom + ',' + left + ',' + top;
+        //}
+
+        //self.setInitialView(storedHash, scale);
+      });
+
+      pdfDocument.getMetadata().then(function(data) {
+        var info = data.info, metadata = data.metadata;
+        self.documentInfo = info;
+        self.metadata = metadata;
+
+        // Provides some basic debug information
+        console.log('PDF ' + pdfDocument.fingerprint + ' [' +
+                    info.PDFFormatVersion + ' ' + (info.Producer || '-') +
+                    ' / ' + (info.Creator || '-') + ']' +
+                    (PDFJS.version ? ' (PDF.js: ' + PDFJS.version + ')' : ''));
+
+        var pdfTitle;
+        if (metadata) {
+          if (metadata.has('dc:title'))
+            pdfTitle = metadata.get('dc:title');
+        }
+
+        if (!pdfTitle && info && info['Title'])
+          pdfTitle = info['Title'];
+
+        if (pdfTitle)
+          self.setTitle(pdfTitle + ' - ' + document.title);
+
+        if (info.IsAcroFormPresent) {
+          // AcroForm/XFA was found
+          PDFView.fallback();
+        }
+      });
     });
   },
 
@@ -3160,18 +3190,22 @@ window.addEventListener('pagechange', function pagechange(evt) {
     var selected = document.querySelector('.thumbnail.selected');
     if (selected)
       selected.classList.remove('selected');
+
     var thumbnail = document.getElementById('thumbnailContainer' + page);
-    thumbnail.classList.add('selected');
-    var visibleThumbs = PDFView.getVisibleThumbs();
-    var numVisibleThumbs = visibleThumbs.views.length;
-    // If the thumbnail isn't currently visible scroll it into view.
-    if (numVisibleThumbs > 0) {
-      var first = visibleThumbs.first.id;
-      // Account for only one thumbnail being visible.
-      var last = numVisibleThumbs > 1 ?
-                  visibleThumbs.last.id : first;
-      if (page <= first || page >= last)
-        scrollIntoView(thumbnail);
+    // FIXME(mack): remove checking if thumbnail is null hack
+    if (thumbnail) {
+      thumbnail.classList.add('selected');
+      var visibleThumbs = PDFView.getVisibleThumbs();
+      var numVisibleThumbs = visibleThumbs.views.length;
+      // If the thumbnail isn't currently visible scroll it into view.
+      if (numVisibleThumbs > 0) {
+        var first = visibleThumbs.first.id;
+        // Account for only one thumbnail being visible.
+        var last = numVisibleThumbs > 1 ?
+                    visibleThumbs.last.id : first;
+        if (page <= first || page >= last)
+          scrollIntoView(thumbnail);
+      }
     }
 
   }

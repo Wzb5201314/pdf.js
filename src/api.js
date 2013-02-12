@@ -595,7 +595,6 @@ var WorkerTransport = (function WorkerTransportClosure() {
             // not yet attached to the DOM. This is done in `FontLoader.bind`.
             var font;
             if ('error' in exportedData) {
-              debugger
               font = new ErrorFont(exportedData.error);
             } else {
               font = new Font(exportedData);

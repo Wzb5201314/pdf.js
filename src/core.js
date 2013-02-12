@@ -21,7 +21,7 @@
 
 'use strict';
 
-var BLOCK_SIZE = 1000000;
+var BLOCK_SIZE = 500000;
 var totalLength = BLOCK_SIZE;
 
 var isLinearized_ = false;
