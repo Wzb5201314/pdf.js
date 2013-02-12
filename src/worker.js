@@ -22,7 +22,6 @@
 
 var counter1_ = 0;
 var pdfUrl_;
-var pdfStream_;
 
 var pdfModel;
 
@@ -212,14 +211,11 @@ var WorkerMessageHandler = {
             headers: source.httpHeaders
           },
           function getPDFLoad(data) {
-            if (!pdfStream_) {
-              pdfStream_ = new ChunkedStream(data.length, BLOCK_SIZE);
-            }
             var chunkStart = data.context.range[0];
             var chunkEnd = data.context.range[1];
             self.getPdfContext = data.context;
             var length = data.length;
-            pdfStream_.onReceiveData(data.chunk, chunkStart);
+            //pdfStream_.onReceiveData(data.chunk, chunkStart);
 
             var doc;
 
@@ -354,9 +350,6 @@ var WorkerMessageHandler = {
                 range: [rangeStart, rangeEnd]
               },
               function getPDFLoad(data) {
-                var chunkStart = data.context.range[0];
-                var chunkEnd = data.context.range[1];
-                pdfStream_.onReceiveData(data.chunk, chunkStart);
                 getPageRequestRetry();
               }
             );
@@ -391,9 +384,6 @@ var WorkerMessageHandler = {
               range: [rangeStart, rangeEnd]
             },
             function getPDFLoad(data) {
-              var chunkStart = data.context.range[0];
-              var chunkEnd = data.context.range[1];
-              pdfStream_.onReceiveData(data.chunk, chunkStart);
               getDestinationsRequestRetry();
             }
           );
@@ -429,9 +419,6 @@ var WorkerMessageHandler = {
               range: [rangeStart, rangeEnd]
             },
             function getPDFLoad(data) {
-              var chunkStart = data.context.range[0];
-              var chunkEnd = data.context.range[1];
-              pdfStream_.onReceiveData(data.chunk, chunkStart);
               getAnnotationsRequestRetry();
             }
           );
@@ -498,9 +485,6 @@ var WorkerMessageHandler = {
                   range: [rangeStart, rangeEnd]
                 },
                 function getPDFLoad(data) {
-                  var chunkStart = data.context.range[0];
-                  var chunkEnd = data.context.range[1];
-                  pdfStream_.onReceiveData(data.chunk, chunkStart);
                   renderPageRequestRetry();
                 }
               );

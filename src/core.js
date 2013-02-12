@@ -25,6 +25,7 @@ var BLOCK_SIZE = 4000;
 var totalLength = BLOCK_SIZE;
 
 var isLinearized_ = false;
+var pdfStream_;
 
 var globalScope = (typeof window === 'undefined') ? this : window;
 
@@ -151,7 +152,13 @@ function getPdf(arg, callback) {
           var rangeHeader = xhr.getResponseHeader('Content-Range');
           totalLength = parseInt(rangeHeader.split('/')[1], 10);
 
+          if (!pdfStream_) {
+            pdfStream_ = new ChunkedStream(totalLength, BLOCK_SIZE);
+          }
+
+          pdfStream_.onReceiveData(data, range[0]);
           callback({ chunk: data, context: arg, length: totalLength });
+
         } else if (params.error && !params.calledErrorBack) {
           params.calledErrorBack = true;
           params.error(e);
