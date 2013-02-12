@@ -21,7 +21,7 @@
 
 'use strict';
 
-var BLOCK_SIZE = 500000;
+var BLOCK_SIZE = 4000;
 var totalLength = BLOCK_SIZE;
 
 var isLinearized_ = false;
@@ -612,7 +612,7 @@ var PDFDocument = (function PDFDocumentClosure() {
       // shadow the prototype getter
       return shadow(this, 'numPages', num);
     },
-    getDocumentInfo: function PDFDocument_getDocumentInfo() {
+    get getDocumentInfo() {
       var docInfo = {
         PDFFormatVersion: this.pdfFormatVersion,
         IsAcroFormPresent: !!this.acroForm
