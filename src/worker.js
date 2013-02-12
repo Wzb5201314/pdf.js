@@ -51,13 +51,16 @@ function MessageHandler(name, comObj) {
   }];
 
   comObj.onmessage = function messageHandlerComObjOnMessage(event) {
+
+    var handler;
+
     var data = event.data;
     if (data.isReply) {
       var callbackId = data.callbackId;
       if (data.callbackId in callbacks) {
         var callback = callbacks[callbackId];
         delete callbacks[callbackId];
-        callback(data.data);
+        handler = callback.bind(undefined, data.data);
       } else {
         error('Cannot resolve callback ' + callbackId);
       }
@@ -72,13 +75,40 @@ function MessageHandler(name, comObj) {
             data: resolvedData
           });
         });
-        action[0].call(action[1], data.data, promise);
+        handler = action[0].bind(action[1], data.data, promise);
       } else {
-        action[0].call(action[1], data.data);
+        handler = action[0].bind(action[1], data.data);
       }
     } else {
       error('Unkown action from worker: ' + data.action);
     }
+
+    if (!handler) {
+      return;
+    }
+
+    var loadPdf = function loadPdf(start, end, callback) {
+      PDFJS.getPdf(
+        {
+          url: pdfUrl_,
+          range: [start, end]
+        },
+        function getPDFLoad(data) {
+          callback();
+        }
+      );
+    };
+
+    (function retryHandler() {
+      try {
+        handler();
+      } catch(e) {
+        if (!(e instanceof MissingDataError)) {
+          throw e;
+        }
+        loadPdf(e.start, e.end, retryHandler);
+      }
+    })();
   };
 }
 
@@ -187,7 +217,6 @@ var WorkerMessageHandler = {
 
       var self = handler;
       var getPdfRetry = function(rangeStart, rangeEnd) {
-        console.log('at 1', rangeStart, rangeEnd);
         PDFJS.getPdf(
           {
             range: [rangeStart, rangeEnd],
@@ -245,7 +274,6 @@ var WorkerMessageHandler = {
                 var chunkStr = bytesToString(new Uint8Array(data.chunk));
 
                 var foundEndToken = !!regex.exec(chunkStr);
-                console.log(pdfModel.xref.currXRefType, foundEndToken);
                 if (chunkEnd < data.length && !foundEndToken) {
                   getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
                   return;
@@ -291,7 +319,6 @@ var WorkerMessageHandler = {
 
               var rangeStart = e.start;
               var rangeEnd = e.end;
-              console.log('at 2');
               getPdfRetry(rangeStart, rangeEnd);
               ////self.getPdfContext.range[0] = rangeStart;
               ////self.getPdfContext.range[1] = rangeEnd;
@@ -309,7 +336,6 @@ var WorkerMessageHandler = {
               //);
             }
             if (doc) {
-              console.log('got doc');
               handler.send('GetDoc', {pdfInfo: doc});
             }
           }
@@ -368,36 +394,13 @@ var WorkerMessageHandler = {
     });
 
     handler.on('GetDestinationsRequest', function wphSetupGetDestinations() {
-      var getDestinationsRequestRetry = function() {
-        var destinations;
-        try {
-          destinations = pdfModel.catalog.destinations;
-        } catch(e) {
-          if (!(e instanceof MissingDataError)) {
-            throw e;
-          }
-
-          var self = handler;
-          var rangeStart = e.start;
-          var rangeEnd = e.end;
-          //self.getPdfContext.range[0] = rangeStart;
-          //self.getPdfContext.range[1] = rangeEnd;
-          PDFJS.getPdf(
-            {
-              url: self.getPdfContext.url,
-              range: [rangeStart, rangeEnd]
-            },
-            function getPDFLoad(data) {
-              getDestinationsRequestRetry();
-            }
-          );
-          return;
-        }
-        handler.send('GetDestinations', { destinations: destinations });
-      };
-      getDestinationsRequestRetry();
+      console.log('\n\nat 1\n\n');
+      var destinations = pdfModel.catalog.destinations;
+      console.log('\n\nat 2\n\n');
+      handler.send('GetDestinations', { destinations: destinations });
     });
 
+    // FIXME(mack): make work w/ MissingDataError
     handler.on('GetData', function wphSetupGetData(data, promise) {
       promise.resolve(pdfModel.stream.bytes);
     });
@@ -480,7 +483,6 @@ var WorkerMessageHandler = {
               var self = handler;
               var rangeStart = e.start;
               var rangeEnd = e.end;
-              console.log('here', rangeStart, rangeEnd);
               //self.getPdfContext.range[0] = rangeStart;
               //self.getPdfContext.range[1] = rangeEnd;
               PDFJS.getPdf(
@@ -526,6 +528,7 @@ var WorkerMessageHandler = {
 
     }, this);
 
+    // FIXME(mack): make work w/ MissingDataError
     handler.on('GetTextContent', function wphExtractText(data, promise) {
       var pageNum = data.pageIndex + 1;
       var start = Date.now();

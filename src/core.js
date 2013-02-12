@@ -21,7 +21,7 @@
 
 'use strict';
 
-var BLOCK_SIZE = 4000;
+var BLOCK_SIZE = 1000000;
 var totalLength = BLOCK_SIZE;
 
 var isLinearized_ = false;
@@ -141,7 +141,6 @@ function getPdf(arg, callback) {
   xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
     if (xhr.readyState === 4) {
       console.log('range', rangeStr, getNumberCounter_);
-      debugger
       var requests = rangeRequests[rangeStr];
       for (var idx = 0; idx < requests.length; ++idx) {
         var params = requests[idx][0];
