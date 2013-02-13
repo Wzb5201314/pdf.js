@@ -20,10 +20,110 @@
 
 'use strict';
 
-var counter1_ = 0;
-var pdfUrl_;
+var networkPdf;
+var NetworkPdf = (function NetworkPdfClosure() {
 
-var pdfModel;
+  function loadPdf(start, end, successCb, loadMoreFn) {
+    PDFJS.getPdf(
+      {
+        range: [start, end],
+        url: this.pdfUrl,
+        progress: networkPdfProgress.bind(this),
+        error: networkPdfError.bind(this),
+        headers: this.httpHeaders
+      },
+      function getPdfLoad(data) {
+        var chunkStart = data.context.range[0];
+        var chunkEnd = data.context.range[1];
+        this.stream.onReceiveData(data.chunk, chunkStart);
+        var range;
+        if (loadMoreFn && (range = loadMoreFn(data))) {
+          loadPdf.call(this, range[0], range[1], successCb, loadMoreFn);
+        } else {
+          successCb(data);
+        }
+      }.bind(this)
+    );
+  }
+
+  function networkPdfProgress(evt) {
+    this.msgHandler.send('DocProgress', {
+      loaded: evt.loaded,
+      total: evt.lengthComputable ? evt.total : void(0)
+    });
+  }
+
+  function networkPdfError(evt) {
+    if (evt.target.status == 404) {
+      var exception = new MissingPDFException(
+          'Missing PDF "' + this.pdfUrl + '".');
+      this.msgHandler.send('MissingPDF', {
+        exception: exception
+      });
+    } else {
+      this.msgHandler.send('DocError', 'Unexpected server response (' +
+          evt.target.status + ') while retrieving PDF "' +
+          this.pdfUrl + '".');
+    }
+  }
+
+  // FIXME(mack): still need to figure out if these checks are correct
+  function loadMoreFn(data) {
+    var xref = this.pdfModel.xref;
+    if (!xref.readingXRefs) {
+      return undefined;
+    }
+
+    if (xref.currXRefType !== 'table' && xref.currXRefType !== 'stream') {
+      return undefined;
+    }
+
+    var regex;
+    if (xref.currXRefType === 'table') {
+      regex = new RegExp('startxref');
+    } else {
+      regex = new RegExp('endobj');
+    }
+    // FIXME(mack): the search chunk needs to also include part of
+    // previous chunk
+    var chunkStr = bytesToString(new Uint8Array(data.chunk));
+    var missingEndToken = !regex.exec(chunkStr);
+    var chunkEnd = data.context.range[0] + data.chunk.byteLength;
+    if (chunkEnd < data.length && missingEndToken) {
+      return [chunkEnd, chunkEnd + BLOCK_SIZE];
+    }
+  }
+
+  function NetworkPdf(source, length, msgHandler) {
+    this.pdfUrl = source.url;
+    this.httpHeaders = source.httpHeaders;
+    this.msgHandler = msgHandler;
+    this.stream = new ChunkedStream(length, BLOCK_SIZE);
+    this.pdfModel = new PDFDocument(this.stream, source.password);
+  }
+
+  NetworkPdf.prototype = {
+    process: function networkPdfProcess(processor) {
+      try {
+        processor(this.pdfModel);
+      } catch(ex) {
+        if (!(ex instanceof MissingDataError)) {
+          throw ex;
+        }
+
+        loadPdf.call(this, ex.start, ex.end,
+          function doneCb() {
+            this.process(processor);
+          }.bind(this),
+          loadMoreFn.bind(this)
+        );
+      }
+    }
+  };
+
+  return NetworkPdf;
+})();
+
 
 function MessageHandler(name, comObj) {
   this.name = name;
@@ -87,28 +187,7 @@ function MessageHandler(name, comObj) {
       return;
     }
 
-    var loadPdf = function loadPdf(start, end, callback) {
-      PDFJS.getPdf(
-        {
-          url: pdfUrl_,
-          range: [start, end]
-        },
-        function getPDFLoad(data) {
-          callback();
-        }
-      );
-    };
-
-    (function retryHandler() {
-      try {
-        handler();
-      } catch(e) {
-        if (!(e instanceof MissingDataError)) {
-          throw e;
-        }
-        loadPdf(e.start, e.end, retryHandler);
-      }
-    })();
+    handler();
   };
 }
 
@@ -208,196 +287,63 @@ var WorkerMessageHandler = {
       var source = data.source;
       if (source.data) {
         // the data is array, instantiating directly from it
-        // TODO(mack): broke loadDocument for this flow
+        // FIXME(mack): broke loadDocument for this flow
         var doc = loadDocument(source.data, source);
         handler.send('GetDoc', {pdfInfo: doc});
         return;
       }
-      pdfUrl_ = source.url;
 
-      var self = handler;
-      var getPdfRetry = function(rangeStart, rangeEnd) {
-        PDFJS.getPdf(
-          {
-            range: [rangeStart, rangeEnd],
-            url: source.url,
-            progress: function getPDFProgress(evt) {
-              handler.send('DocProgress', {
-                loaded: evt.loaded,
-                total: evt.lengthComputable ? evt.total : void(0)
-              });
-            },
-            error: function getPDFError(e) {
-              if (e.target.status == 404) {
-                handler.send('MissingPDF', {
-                  exception: new MissingPDFException(
-                    'Missing PDF \"' + source.url + '\".')});
-              } else {
-                handler.send('DocError', 'Unexpected server response (' +
-                              e.target.status + ') while retrieving PDF \"' +
-                              source.url + '\".');
-              }
-            },
-            headers: source.httpHeaders
-          },
-          function getPDFLoad(data) {
-            var chunkStart = data.context.range[0];
-            var chunkEnd = data.context.range[1];
-            self.getPdfContext = data.context;
-            var length = data.length;
-            //pdfStream_.onReceiveData(data.chunk, chunkStart);
-
-            var doc;
-
-            if (!pdfModel)  {
-              var stream;
-              var pdfPassword = source.password;
-              var pdfData = pdfStream_;
-              if (pdfData instanceof ChunkedStream) {
-                stream = pdfData;
-              } else {
-                stream = new Stream(pdfData);
-              }
-              pdfModel = new PDFDocument(stream, pdfPassword);
-            }
-
-            // TODO(mack): incoorpate back optimization
-            if (pdfModel.xref.readingXRefs) {
-              var regex;
-              if (pdfModel.xref.currXRefType === 'table' || pdfModel.xref.currXRefType === 'stream') {
-                if (pdfModel.xref.currXRefType === 'table') {
-                  regex = new RegExp('startxref');
-                } else if (pdfModel.xref.currXRefType === 'stream') {
-                  regex = new RegExp('endobj');
-                }
-                // FIXME(mack): the search chunk needs to also include part of previous chunk
-                var chunkStr = bytesToString(new Uint8Array(data.chunk));
-
-                var foundEndToken = !!regex.exec(chunkStr);
-                if (chunkEnd < data.length && !foundEndToken) {
-                  getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
-                  return;
-                }
-              }
-            }
-
-            var exception;
-            var doc;
-            try {
-              loadDocument(pdfModel);
-              var numPages = pdfModel.numPages;
-              var fingerprint = pdfModel.getFingerprint;
-              var outline = pdfModel.catalog.documentOutline;
-              var info = pdfModel.getDocumentInfo;
-              var metadata = pdfModel.catalog.metadata;
-              var encrypted = !!pdfModel.xref.encrypt;
-              doc = {
-                numPages: numPages,
-                fingerprint: fingerprint,
-                //destinations: destinations,
-                outline: outline,
-                info: info,
-                metadata: metadata,
-                encrypted: encrypted
-              };
-            } catch(e) {
-              exception = true;
-              if (!(e instanceof MissingDataError)) {
-                debugger
-                throw e;
-              }
-              //if (isLinearized_) {
-              //  getPdfRetry(chunkEnd, chunkEnd + BLOCK_SIZE);
-              //} else {
-              //  if (chunkStart === 0) {
-              //    var start_ = length - length % BLOCK_SIZE;
-              //    getPdfRetry(start_, length);
-              //  } else {
-              //    getPdfRetry(chunkStart - BLOCK_SIZE, chunkStart);
-              //  }
-              //}
-
-              var rangeStart = e.start;
-              var rangeEnd = e.end;
-              getPdfRetry(rangeStart, rangeEnd);
-              ////self.getPdfContext.range[0] = rangeStart;
-              ////self.getPdfContext.range[1] = rangeEnd;
-              //PDFJS.getPdf(
-              //  {
-              //    url: source.url,
-              //    range: [rangeStart, rangeEnd]
-              //  },
-              //  function getPDFLoad(data) {
-              //    var chunkStart = data.context.range[0];
-              //    var chunkEnd = data.context.range[1];
-              //    pdfStream_.onReceiveData(data.chunk, chunkStart);
-              //    getPageRequestRetry();
-              //  }
-              //);
-            }
-            if (doc) {
-              handler.send('GetDoc', {pdfInfo: doc});
-            }
-          }
-        );
-      };
-      var rangeStart = 0;
-      var rangeEnd = BLOCK_SIZE;
-      getPdfRetry(rangeStart, rangeEnd);
+      PDFJS.getPdf(
+        {
+          range: [0, 1],
+          url: source.url,
+          headers: source.httpHeaders
+        },
+        function(data) {
+          networkPdf = new NetworkPdf(source, data.length, handler);
+          networkPdf.process(function(pdfModel) {
+            loadDocument(pdfModel);
+            var numPages = pdfModel.numPages;
+            var fingerprint = pdfModel.getFingerprint;
+            var outline = pdfModel.catalog.documentOutline;
+            var info = pdfModel.getDocumentInfo;
+            var metadata = pdfModel.catalog.metadata;
+            var encrypted = !!pdfModel.xref.encrypt;
+            doc = {
+              numPages: numPages,
+              fingerprint: fingerprint,
+              outline: outline,
+              info: info,
+              metadata: metadata,
+              encrypted: encrypted
+            };
+            handler.send('GetDoc', { pdfInfo: doc });
+          });
+        }
+      );
     });
 
     handler.on('GetPageRequest', function wphSetupGetPage(data) {
-      var pageNumber = data.pageIndex + 1;
-      var pdfPage;
-
-      var getPageRequestRetry = function() {
-        var page;
-        try {
-          pdfPage = pdfModel.getPage(pageNumber);
-
-          var encrypt = pdfModel.xref.encrypt;
-          page = {
-            pageIndex: data.pageIndex,
-            rotate: pdfPage.rotate,
-            ref: pdfPage.ref,
-            view: pdfPage.view,
-            disableTextLayer: encrypt ? encrypt.disableTextLayer : false
-          };
-        } catch(e) {
-          if (!(e instanceof MissingDataError)) {
-            throw e;
-          }
-
-          (function() {
-            var self = handler;
-            var rangeStart = e.start;
-            var rangeEnd = e.end;
-            //self.getPdfContext.range[0] = rangeStart;
-            //self.getPdfContext.range[1] = rangeEnd;
-            PDFJS.getPdf(
-              {
-                url: self.getPdfContext.url,
-                range: [rangeStart, rangeEnd]
-              },
-              function getPDFLoad(data) {
-                getPageRequestRetry();
-              }
-            );
-          })();
-        }
-        if (page) {
-          handler.send('GetPage', {pageInfo: page});
-        }
-      };
-      getPageRequestRetry();
-
+      networkPdf.process(function(pdfModel) {
+        var pageNumber = data.pageIndex + 1;
+        var pdfPage = pdfModel.getPage(pageNumber);
+        var encrypt = pdfModel.xref.encrypt;
+        var page = {
+          pageIndex: data.pageIndex,
+          rotate: pdfPage.rotate,
+          ref: pdfPage.ref,
+          view: pdfPage.view,
+          disableTextLayer: encrypt ? encrypt.disableTextLayer : false
+        };
+        handler.send('GetPage', { pageInfo: page });
+      });
     });
 
     handler.on('GetDestinationsRequest', function wphSetupGetDestinations() {
-      console.log('\n\nat 1\n\n');
-      var destinations = pdfModel.catalog.destinations;
-      console.log('\n\nat 2\n\n');
-      handler.send('GetDestinations', { destinations: destinations });
+      networkPdf.process(function(pdfModel) {
+        var destinations = pdfModel.catalog.destinations;
+        handler.send('GetDestinations', { destinations: destinations });
+      });
     });
 
     // FIXME(mack): make work w/ MissingDataError
@@ -406,53 +352,30 @@ var WorkerMessageHandler = {
     });
 
     handler.on('GetAnnotationsRequest', function wphSetupGetAnnotations(data) {
-      var pdfPage = pdfModel.getPage(data.pageIndex + 1);
-
-      var getAnnotationsRequestRetry = function() {
-        var annotations;
-        try {
-          annotations = pdfPage.getAnnotations();
-        } catch(e) {
-          if (!(e instanceof MissingDataError)) {
-            throw e;
-          }
-
-          var self = handler;
-          var rangeStart = e.start;
-          var rangeEnd = e.end;
-          PDFJS.getPdf(
-            {
-              url: self.getPdfContext.url,
-              range: [rangeStart, rangeEnd]
-            },
-            function getPDFLoad(data) {
-              getAnnotationsRequestRetry();
-            }
-          );
-          return;
-        }
+      networkPdf.process(function(pdfModel) {
+        var pdfPage = pdfModel.getPage(data.pageIndex + 1);
+        var annotations = pdfPage.getAnnotations();
         handler.send('GetAnnotations', {
           pageIndex: data.pageIndex,
           annotations: annotations
         });
-      };
-      getAnnotationsRequestRetry();
-
+      });
     });
 
     handler.on('RenderPageRequest', function wphSetupRenderPage(data) {
-      var pageNum = data.pageIndex + 1;
+      networkPdf.process(function(pdfModel) {
 
-      // The following code does quite the same as
-      // Page.prototype.startRendering, but stops at one point and sends the
-      // result back to the main thread.
-      var gfx = new CanvasGraphics(null);
+        var pageNum = data.pageIndex + 1;
 
-      var start = Date.now();
+        // The following code does quite the same as
+        // Page.prototype.startRendering, but stops at one point and sends the
+        // result back to the main thread.
+        var gfx = new CanvasGraphics(null);
 
-      var dependency = [];
-      var operatorList = null;
-      var renderPageRequestRetry = function() {
+        var start = Date.now();
+
+        var dependency = [];
+        var operatorList = null;
         try {
           var page = pdfModel.getPage(pageNum);
           // Pre compile the pdf page and fetch the fonts/images.
@@ -479,53 +402,36 @@ var WorkerMessageHandler = {
               'worker.js: while trying to getPage() and getOperatorList()';
 
           if (e instanceof MissingDataError) {
-            (function() {
-              var self = handler;
-              var rangeStart = e.start;
-              var rangeEnd = e.end;
-              //self.getPdfContext.range[0] = rangeStart;
-              //self.getPdfContext.range[1] = rangeEnd;
-              PDFJS.getPdf(
-                {
-                  url: pdfUrl_,
-                  range: [rangeStart, rangeEnd]
-                },
-                function getPDFLoad(data) {
-                  renderPageRequestRetry();
-                }
-              );
-            })();
-          } else {
-            var wrappedException;
-
-            // Turn the error into an obj that can be serialized
-            if (typeof e === 'string') {
-              wrappedException = {
-                message: e,
-                stack: minimumStackMessage
-              };
-            } else if (typeof e === 'object') {
-              wrappedException = {
-                message: e.message || e.toString(),
-                stack: e.stack || minimumStackMessage
-              };
-            } else {
-              wrappedException = {
-                message: 'Unknown exception type: ' + (typeof e),
-                stack: minimumStackMessage
-              };
-            }
-
-            handler.send('PageError', {
-              pageNum: pageNum,
-              error: wrappedException
-            });
-            return;
+            throw e;
           }
-        }
-      };
-      renderPageRequestRetry();
 
+          var wrappedException;
+
+          // Turn the error into an obj that can be serialized
+          if (typeof e === 'string') {
+            wrappedException = {
+              message: e,
+              stack: minimumStackMessage
+            };
+          } else if (typeof e === 'object') {
+            wrappedException = {
+              message: e.message || e.toString(),
+              stack: e.stack || minimumStackMessage
+            };
+          } else {
+            wrappedException = {
+              message: 'Unknown exception type: ' + (typeof e),
+              stack: minimumStackMessage
+            };
+          }
+
+          handler.send('PageError', {
+            pageNum: pageNum,
+            error: wrappedException
+          });
+          return;
+        }
+      });
     }, this);
 
     // FIXME(mack): make work w/ MissingDataError
