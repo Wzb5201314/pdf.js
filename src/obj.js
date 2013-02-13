@@ -422,9 +422,7 @@ var XRef = (function XRefClosure() {
 
   XRef.prototype = {
     init_: function() {
-      this.readingXRefs = true;
       var trailerDict = this.readXRef();
-      this.readingXRefs = false;
       trailerDict.assignXref(this);
       this.trailer = trailerDict;
       var encrypt = trailerDict.get('Encrypt');
@@ -744,6 +742,7 @@ var XRef = (function XRefClosure() {
           var shiftPos = this.startXRefQueue.shift();
         }
 
+        this.currXRefType = '';
         return this.topDict;
       } catch (e) {
         if (e instanceof MissingDataError) {
@@ -752,6 +751,7 @@ var XRef = (function XRefClosure() {
 
         log('(while reading XRef): ' + e);
       }
+      this.currXRefType = '';
 
       if (recoveryMode) {
         return;

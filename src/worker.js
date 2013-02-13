@@ -22,7 +22,7 @@
 
 var NetworkPdf = (function NetworkPdfClosure() {
 
-  var BLOCK_SIZE = 64000;
+  var BLOCK_SIZE = 1024;
 
   function loadPdf(begin, end, successCb, loadMoreFn) {
     PDFJS.getPdf(
@@ -89,13 +89,10 @@ var NetworkPdf = (function NetworkPdfClosure() {
   }
 
   // FIXME(mack): still need to figure out if these checks are correct
+  // TODO(mack): Use this to optimize request sizes for all objs, not just xrefs
   function loadMoreFn(data) {
     // FIXME(mack): Clean up how we access state of xref
     var xref = this.pdfModel.xref;
-    if (!xref.readingXRefs) {
-      return undefined;
-    }
-
     if (xref.currXRefType !== 'table' && xref.currXRefType !== 'stream') {
       return undefined;
     }
@@ -106,12 +103,14 @@ var NetworkPdf = (function NetworkPdfClosure() {
     } else {
       regex = new RegExp('endobj');
     }
+
     // FIXME(mack): the search chunk needs to also include part of
     // previous chunk
     var chunkStr = bytesToString(new Uint8Array(data.chunk));
     var missingEndToken = !regex.exec(chunkStr);
     var chunkEnd = data.context.range.begin + data.chunk.byteLength;
     var prevChunkSize = data.chunk.byteLength;
+
     if (chunkEnd < data.length && missingEndToken) {
       return {
         begin: chunkEnd,
