@@ -742,7 +742,6 @@ var XRef = (function XRefClosure() {
           }
 
           var shiftPos = this.startXRefQueue.shift();
-          console.log('\nshifted off\n', shiftPos);
         }
 
         return this.topDict;

@@ -19,8 +19,8 @@
 
 'use strict';
 
-function MissingDataError(start, end) {
-  this.start = start;
+function MissingDataError(begin, end) {
+  this.begin = begin;
   this.end = end;
 }
 
@@ -114,26 +114,26 @@ var ChunkedStream = (function ChunkedStreamClosure() {
       this.bytes.set(new Uint8Array(buffer), offset);
       var blockSize = this.blockSize;
       var end = offset + buffer.byteLength;
-      var startBlock = Math.floor(offset / blockSize);
+      var beginBlock = Math.floor(offset / blockSize);
       var endBlock = Math.floor((end - 1) / blockSize) + 1;
       var filled = this.blocksFilled;
-      for (var i = startBlock; i < endBlock; i++) {
+      for (var i = beginBlock; i < endBlock; i++) {
         filled[i] = true;
       }
     },
 
-    ensureRange: function ChunkedStream_ensureRange(start, end) {
-      if (start >= end) {
+    ensureRange: function ChunkedStream_ensureRange(begin, end) {
+      if (begin >= end) {
         return;
       }
 
       var blockSize = this.blockSize;
-      var startBlock = Math.floor(start / blockSize);
+      var beginBlock = Math.floor(begin / blockSize);
       var endBlock = Math.floor((end - 1) / blockSize) + 1;
       var filled = this.blocksFilled;
-      for (var i = startBlock; i < endBlock; ++i) {
+      for (var i = beginBlock; i < endBlock; ++i) {
         if (!(i in filled)) {
-          throw new MissingDataError(start, end);
+          throw new MissingDataError(begin, end);
         }
       }
     },

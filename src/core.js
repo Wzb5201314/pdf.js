@@ -21,9 +21,6 @@
 
 'use strict';
 
-var BLOCK_SIZE = 1000000;
-var totalLength = BLOCK_SIZE;
-
 var isLinearized_ = false;
 var pdfStream_;
 
@@ -58,10 +55,7 @@ function getPdf(arg, callback) {
   }
 
   var range = params.range;
-  range[0] = range[0] - range[0] % BLOCK_SIZE;
-  var blockEnd = (range[1] - range[1] % BLOCK_SIZE) + BLOCK_SIZE;
-  var rangeEnd = Math.min(totalLength, blockEnd);
-  var rangeStr = range[0] + '-' + (rangeEnd - 1);
+  var rangeStr = range.begin + '-' + (range.end - 1);
 
   // TODO(mack): chrome seems to cache xhr range requests, but firefox does
   // not; so this is necessary for now
@@ -140,7 +134,7 @@ function getPdf(arg, callback) {
 
   xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
     if (xhr.readyState === 4) {
-      console.log('range', rangeStr, getNumberCounter_);
+      console.log('range', rangeStr);
       var requests = rangeRequests[rangeStr];
       for (var idx = 0; idx < requests.length; ++idx) {
         var params = requests[idx][0];
@@ -150,13 +144,8 @@ function getPdf(arg, callback) {
           //            xhr.responseArrayBuffer || xhr.response);
           var data = xhr.getArrayBuffer();
           var rangeHeader = xhr.getResponseHeader('Content-Range');
-          totalLength = parseInt(rangeHeader.split('/')[1], 10);
+          var totalLength = parseInt(rangeHeader.split('/')[1], 10);
 
-          if (!pdfStream_) {
-            pdfStream_ = new ChunkedStream(totalLength, BLOCK_SIZE);
-          }
-
-          pdfStream_.onReceiveData(data, range[0]);
           callback({ chunk: data, context: arg, length: totalLength });
 
         } else if (params.error && !params.calledErrorBack) {

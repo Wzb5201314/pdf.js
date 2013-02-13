@@ -20,30 +20,42 @@
 
 'use strict';
 
-var networkPdf;
 var NetworkPdf = (function NetworkPdfClosure() {
 
-  function loadPdf(start, end, successCb, loadMoreFn) {
+  var BLOCK_SIZE = 64000;
+
+  function loadPdf(begin, end, successCb, loadMoreFn) {
     PDFJS.getPdf(
       {
-        range: [start, end],
+        range: {
+          begin: normalizeRangeBegin.call(this, begin),
+          end: normalizeRangeEnd.call(this, end)
+        },
         url: this.pdfUrl,
         progress: networkPdfProgress.bind(this),
         error: networkPdfError.bind(this),
         headers: this.httpHeaders
       },
       function getPdfLoad(data) {
-        var chunkStart = data.context.range[0];
-        var chunkEnd = data.context.range[1];
-        this.stream.onReceiveData(data.chunk, chunkStart);
+        var chunkBegin = data.context.range.begin;
+        this.stream.onReceiveData(data.chunk, chunkBegin);
         var range;
         if (loadMoreFn && (range = loadMoreFn(data))) {
-          loadPdf.call(this, range[0], range[1], successCb, loadMoreFn);
+          loadPdf.call(this, range.begin, range.end, successCb, loadMoreFn);
         } else {
           successCb(data);
         }
       }.bind(this)
     );
+  }
+
+  function normalizeRangeBegin(begin) {
+    return begin - begin % BLOCK_SIZE;
+  }
+
+  function normalizeRangeEnd(end) {
+    var blockEnd = end + BLOCK_SIZE - (end % BLOCK_SIZE);
+    return Math.min(this.pdfLength, blockEnd);
   }
 
   function networkPdfProgress(evt) {
@@ -88,17 +100,21 @@ var NetworkPdf = (function NetworkPdfClosure() {
     // previous chunk
     var chunkStr = bytesToString(new Uint8Array(data.chunk));
     var missingEndToken = !regex.exec(chunkStr);
-    var chunkEnd = data.context.range[0] + data.chunk.byteLength;
+    var chunkEnd = data.context.range.begin + data.chunk.byteLength;
     if (chunkEnd < data.length && missingEndToken) {
-      return [chunkEnd, chunkEnd + BLOCK_SIZE];
+      return {
+        begin: chunkEnd,
+        end: chunkEnd + BLOCK_SIZE
+      };
     }
   }
 
-  function NetworkPdf(source, length, msgHandler) {
+  function NetworkPdf(source, pdfLength, msgHandler) {
     this.pdfUrl = source.url;
     this.httpHeaders = source.httpHeaders;
     this.msgHandler = msgHandler;
-    this.stream = new ChunkedStream(length, BLOCK_SIZE);
+    this.pdfLength = pdfLength;
+    this.stream = new ChunkedStream(pdfLength, BLOCK_SIZE);
     this.pdfModel = new PDFDocument(this.stream, source.password);
   }
 
@@ -111,7 +127,9 @@ var NetworkPdf = (function NetworkPdfClosure() {
           throw ex;
         }
 
-        loadPdf.call(this, ex.start, ex.end,
+        loadPdf.call(this,
+          ex.begin,
+          ex.end,
           function doneCb() {
             this.process(processor);
           }.bind(this),
@@ -221,6 +239,7 @@ MessageHandler.prototype = {
 
 var WorkerMessageHandler = {
   setup: function wphSetup(handler) {
+    var networkPdf;
 
     function loadDocument(pdfModel) {
       // Create only the model of the PDFDoc, which is enough for
@@ -295,7 +314,7 @@ var WorkerMessageHandler = {
 
       PDFJS.getPdf(
         {
-          range: [0, 1],
+          range: { begin: 0, end: 1},
           url: source.url,
           headers: source.httpHeaders
         },

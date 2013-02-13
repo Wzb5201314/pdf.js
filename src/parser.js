@@ -23,8 +23,6 @@
 
 var EOF = {};
 
-var getNumberCounter_ = 0;
-
 function isEOF(v) {
   return v == EOF;
 }
@@ -327,8 +325,6 @@ var Lexer = (function LexerClosure() {
 
   Lexer.prototype = {
     getNumber: function Lexer_getNumber(ch) {
-      ++getNumberCounter_;
-
       var floating = false;
       var str = ch;
       var stream = this.stream;
@@ -485,14 +481,12 @@ var Lexer = (function LexerClosure() {
           if (isFirstHex) {
             firstDigit = toHexDigit(ch);
             if (firstDigit === -1) {
-              debugger
               warn('Ignoring invalid character "' + ch + '" in hex string');
               continue;
             }
           } else {
             secondDigit = toHexDigit(ch);
             if (secondDigit === -1) {
-              debugger
               warn('Ignoring invalid character "' + ch + '" in hex string');
               continue;
             }
