@@ -1354,18 +1354,6 @@ var PDFView = {
         pdfDocument.getOutline().then(function(outline) {
           self.outline = new DocumentOutlineView(outline);
         });
-
-        //var storedHash = null;
-        //if (store.get('exists', false)) {
-        //  var page = store.get('page', '1');
-        //  var zoom = store.get('zoom', PDFView.currentScale);
-        //  var left = store.get('scrollLeft', '0');
-        //  var top = store.get('scrollTop', '0');
-
-        //  storedHash = 'page=' + page + '&zoom=' + zoom + ',' + left + ',' + top;
-        //}
-
-        //self.setInitialView(storedHash, scale);
       });
 
       pdfDocument.getMetadata().then(function(data) {
