@@ -114,10 +114,6 @@ var PDFDocumentProxy = (function PDFDocumentProxyClosure() {
      * mapping named destinations to reference numbers.
      */
     getDestinations: function PDFDocumentProxy_getDestinations() {
-      //var promise = new PDFJS.Promise();
-      //var destinations = this.pdfInfo.destinations;
-      //promise.resolve(destinations);
-      //return promise;
       return this.transport.getDestinations();
     },
     /**
