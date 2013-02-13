@@ -673,10 +673,13 @@ var XRef = (function XRefClosure() {
     readXRef: function XRef_readXRef() {
       var stream = this.stream;
 
+      // TODO(mack): proper settings of this.currXRefType before pushing
+      // table could optimize this even more...
       try {
         while (this.startXRefQueue.length) {
           var startXRef = this.startXRefQueue[0][0];
           var recoveryMode = this.startXRefQueue[0][1];
+
           stream.pos = startXRef;
 
           var parser = new Parser(new Lexer(stream), true, null);
@@ -701,6 +704,7 @@ var XRef = (function XRefClosure() {
               // (possible infinite recursion)
               if (!(pos in this.xrefstms)) {
                 this.xrefstms[pos] = 1;
+                this.currXRefType = null;
                 this.startXRefQueue.push([pos]);
                 //this.readXRef(pos_);
               }
@@ -727,11 +731,13 @@ var XRef = (function XRefClosure() {
           obj = dict.get('Prev');
           if (isInt(obj)) {
             //this.readXRef(obj, recoveryMode);
+            this.currXRefType = null;
             this.startXRefQueue.push([obj, recoveryMode]);
           } else if (isRef(obj)) {
             // The spec says Prev must not be a reference, i.e. "/Prev NNN"
             // This is a fallback for non-compliant PDFs, i.e. "/Prev NNN 0 R"
             //this.readXRef(obj.num, recoveryMode);
+            this.currXRefType = null;
             this.startXRefQueue.push([obj.num, recoveryMode]);
           }
 
