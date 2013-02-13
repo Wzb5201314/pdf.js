@@ -177,7 +177,8 @@ class TestHandlerBase(BaseHTTPRequestHandler):
         self.send_header("Content-Length", chunk_len)
         self.send_header("Content-Range", 'bytes ' + str(start) + '-' + str(end - 1) + '/' + str(file_len))
         self.end_headers()
-        #time.sleep(chunk_len / 250000.0)
+        if (start < 25792000):
+            time.sleep(chunk_len / 100000.0)
         with open(path, "rb") as f:
             f.seek(start)
             self.wfile.write(f.read(chunk_len))

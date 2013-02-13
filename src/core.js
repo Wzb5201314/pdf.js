@@ -136,6 +136,8 @@ function getPdf(arg, callback) {
     if (xhr.readyState === 4) {
       console.log('range', rangeStr);
       var requests = rangeRequests[rangeStr];
+      // FIXME(mack): fix race condition causing this requests to be undefined
+      // when setting breakpoint here or pagePromise.then in viewer.js
       for (var idx = 0; idx < requests.length; ++idx) {
         var params = requests[idx][0];
         var callback = requests[idx][1];
