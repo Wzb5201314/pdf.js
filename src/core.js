@@ -21,9 +21,6 @@
 
 'use strict';
 
-var isLinearized_ = false;
-var pdfStream_;
-
 var globalScope = (typeof window === 'undefined') ? this : window;
 
 var isWorker = (typeof window == 'undefined');
@@ -512,8 +509,6 @@ var PDFDocument = (function PDFDocumentClosure() {
           linearization = new Linearization(this.stream);
           if (linearization.length != length) {
             linearization = false;
-          } else {
-            isLinearized_ = true;
           }
         } catch (err) {
           warn('The linearization data is not available ' +
