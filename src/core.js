@@ -135,19 +135,18 @@ function getPdf(arg, callback) {
       var requests = rangeRequests[rangeStr];
       // FIXME(mack): fix race condition causing this requests to be undefined
       // when setting breakpoint here or pagePromise.then in viewer.js
-      for (var idx = 0; idx < requests.length; ++idx) {
-        var params = requests[idx][0];
-        var callback = requests[idx][1];
-        if (xhr.status === xhr.expected) {
-          //var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
-          //            xhr.responseArrayBuffer || xhr.response);
-          var data = xhr.getArrayBuffer();
-          var rangeHeader = xhr.getResponseHeader('Content-Range');
-          var totalLength = parseInt(rangeHeader.split('/')[1], 10);
-
+      if (xhr.status === xhr.expected) {
+        var data = xhr.getArrayBuffer();
+        var rangeHeader = xhr.getResponseHeader('Content-Range');
+        var totalLength = parseInt(rangeHeader.split('/')[1], 10);
+        for (var idx = 0; idx < requests.length; ++idx) {
+          var params = requests[idx][0];
+          var callback = requests[idx][1];
           callback({ chunk: data, context: arg, length: totalLength });
-
-        } else if (params.error && !params.calledErrorBack) {
+        }
+      } else if (params.error && !params.calledErrorBack) {
+        for (var idx = 0; idx < requests.length; ++idx) {
+          var params = requests[idx][0];
           params.calledErrorBack = true;
           params.error(e);
         }
