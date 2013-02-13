@@ -40,6 +40,12 @@ var NetworkPdf = (function NetworkPdfClosure() {
         var chunkBegin = data.context.range.begin;
         this.stream.onReceiveData(data.chunk, chunkBegin);
         var range;
+        // FIXME(mack): for xref's it will not come here until the second
+        // request has been made since the first request will be to get
+        // the data that will be send to successCb, while the second request
+        // will be made after successCb fails; this could be optimized by
+        // making it exec the loadMoreData after the first request, before
+        // the second request
         if (loadMoreFn && (range = loadMoreFn(data))) {
           loadPdf.call(this, range.begin, range.end, successCb, loadMoreFn);
         } else {
@@ -54,6 +60,9 @@ var NetworkPdf = (function NetworkPdfClosure() {
   }
 
   function normalizeRangeEnd(end) {
+    if (end % BLOCK_SIZE === 0) {
+      return end;
+    }
     var blockEnd = end + BLOCK_SIZE - (end % BLOCK_SIZE);
     return Math.min(this.pdfLength, blockEnd);
   }
@@ -81,6 +90,7 @@ var NetworkPdf = (function NetworkPdfClosure() {
 
   // FIXME(mack): still need to figure out if these checks are correct
   function loadMoreFn(data) {
+    // FIXME(mack): Clean up how we access state of xref
     var xref = this.pdfModel.xref;
     if (!xref.readingXRefs) {
       return undefined;
@@ -101,10 +111,11 @@ var NetworkPdf = (function NetworkPdfClosure() {
     var chunkStr = bytesToString(new Uint8Array(data.chunk));
     var missingEndToken = !regex.exec(chunkStr);
     var chunkEnd = data.context.range.begin + data.chunk.byteLength;
+    var prevChunkSize = data.chunk.byteLength;
     if (chunkEnd < data.length && missingEndToken) {
       return {
         begin: chunkEnd,
-        end: chunkEnd + BLOCK_SIZE
+        end: chunkEnd + 2 * prevChunkSize
       };
     }
   }
@@ -314,7 +325,7 @@ var WorkerMessageHandler = {
 
       PDFJS.getPdf(
         {
-          range: { begin: 0, end: 1},
+          range: { begin: 0, end: 1 },
           url: source.url,
           headers: source.httpHeaders
         },
