@@ -1319,21 +1319,15 @@ var PDFView = {
 
 
       var pagePromises = [];
-      for (var i = 1; i <= pagesCount; i++) {
-        if (i === currPage) {
-          continue;
-        }
-        pagePromises.push(pdfDocument.getPage(i));
-      }
-
-      var pagesPromise = PDFJS.Promise.all(pagePromises);
-      pagesPromise.then(function(promisedPages) {
-        for (var i = 2; i <= pagesCount; i++) {
+      for (var i = 2; i <= pagesCount; i++) {
+        var pagePromise = pdfDocument.getPage(i);
+        pagePromises.push(pagePromise);
+        pagePromise.then(function(page) {
+          var i = page.pageInfo.pageIndex + 1;
 
           var pageElement = placeholderPages[i - 1].element;
           delete placeholderPages[i - 1];
 
-          var page = promisedPages[i - 2];
           var pageView = new PageView(container, pageElement, page, i, scale,
                                       page.stats, self.navigateTo.bind(self));
           var thumbnailView = new ThumbnailView(thumbsView, page, i);
@@ -1343,8 +1337,9 @@ var PDFView = {
           self.thumbnails.push(thumbnailView);
           var pageRef = page.ref;
           self.pagesRefMap[pageRef.num + ' ' + pageRef.gen + ' R'] = i;
-        }
-      });
+        });
+      }
+      var pagesPromise = PDFJS.Promise.all(pagePromises);
 
       var destinationsPromise = pdfDocument.getDestinations();
       destinationsPromise.then(function(destinations) {
