@@ -104,7 +104,6 @@ var ChunkedStream = (function ChunkedStreamClosure() {
     this.end = length;
     this.blockSize = blockSize;
     this.blocksFilled = [];
-    //this.missingRanges = [[this.start, this.end]];
   }
 
   // required methods for a stream. if a particular stream does not
@@ -112,59 +111,11 @@ var ChunkedStream = (function ChunkedStreamClosure() {
   ChunkedStream.prototype = {
 
     onReceiveData: function(buffer, offset) {
-      //var bufferLength = buffer.byteLength;
-      //if (!bufferLength) {
-      //  return;
-      //}
-      //var end = start + bufferLength;
-
-      //var newMissingRanges = [];
-      //var prevMissingRange;
-      //var found = false;
-      //for (var idx = 0; idx < this.missingRanges.length; ++idx) {
-      //  var missingRange = this.missingRanges[idx];
-      //  var missingStart = missingRange[0];
-      //  var missingEnd = missingRange[1];
-      //  if (end <= missingEnd && !found) {
-      //    if (start < missingStart) {
-      //      //warn('Range [' + start + ', ' + end +
-      //      //  ') not fully contained in missing range');
-      //    }
-      //    if (start === missingStart && end === missingEnd) {
-      //      // Fully covered this range
-      //    } else if (start === missingStart) {
-      //      newMissingRanges.push([end, missingEnd]);
-      //    } else if (end === missingEnd) {
-      //      newMissingRanges.push([missingStart, start]);
-      //    } else {
-      //      newMissingRanges.push([missingStart, start]);
-      //      newMissingRanges.push([end, missingEnd]);
-      //    }
-      //    found = true;
-      //  } else {
-      //    newMissingRanges.push([missingStart, missingEnd]);
-      //  }
-      //}
-
-      //if (!found) {
-      //  debugger
-      //  warn('Did not find range [' + start + ', ' + end +
-      //      ') in list of missing ranges');
-      //}
-
-      //this.missingRanges = newMissingRanges;
-      //for (var i = start; i < end; ++i) {
-      //  this.filled[i] = true;
-      //}
-      //this.bytes.set(new Uint8Array(buffer), start);
-
       this.bytes.set(new Uint8Array(buffer), offset);
       var blockSize = this.blockSize;
       var end = offset + buffer.byteLength;
       var startBlock = Math.floor(offset / blockSize);
       var endBlock = Math.floor((end - 1) / blockSize) + 1;
-      //var endBlock = end < this.end ? Math.floor(end / blockSize) :
-      //                                Math.ceil(this.end / blockSize);
       var filled = this.blocksFilled;
       for (var i = startBlock; i < endBlock; i++) {
         filled[i] = true;
@@ -172,22 +123,6 @@ var ChunkedStream = (function ChunkedStreamClosure() {
     },
 
     ensureRange: function ChunkedStream_ensureRange(start, end) {
-      //for (var idx = 0; idx < this.missingRanges.length; ++idx) {
-      //  var missingRange = this.missingRanges[idx];
-      //  var missingStart = missingRange[0];
-      //  var missingEnd = missingRange[1];
-      //  if (start >= missingStart && start < missingEnd ||
-      //      end > missingStart && end <= missingEnd) {
-      //    //warn('Range [' + start + ', ' + end +
-      //    //    ') contained in missing range');
-      //    throw new MissingDataError(start, end);
-      //  }
-      //}
-      //for (var i = start; i < end; ++i) {
-      //  if (!(i in this.filled)) {
-      //    throw new MissingDataError(start, end);
-      //  }
-      //}
       if (start >= end) {
         return;
       }
