@@ -1285,7 +1285,7 @@ var PDFView = {
     pdfDocument.getPage(currPage).then(function(page) {
       var storedHash = null;
       if (store.get('exists', false)) {
-        var pageNum = store.get('page', '1');
+        var pageNum = store.get('page', currPage);
         var zoom = store.get('zoom', PDFView.currentScale);
         var left = store.get('scrollLeft', '0');
         var top = store.get('scrollTop', '0');
@@ -1293,9 +1293,21 @@ var PDFView = {
         storedHash = 'page=' + pageNum + '&zoom=' + zoom + ',' + left + ',' + top;
       }
 
-      var pageView = new PageView(container, page, self.page, scale,
+      var placeholderPages = [];
+      for (var id = 1; id <= pagesCount; ++id) {
+        // FIXME(mack): do not use page.getViewport...
+        // FIXME(mack): scaling for subsequent pages too small for pdf.pdf...
+        var viewport = page.getViewport(scale || 1.0, page.rotate);
+        placeholderPages[id - 1] = new PlaceholderPageView(
+          container, viewport, id);
+      }
+
+      var pageElement = placeholderPages[currPage - 1].element;
+      delete placeholderPages[currPage - 1];
+
+      var pageView = new PageView(container, pageElement, page, currPage, scale,
                                   page.stats, self.navigateTo.bind(self));
-      var thumbnailView = new ThumbnailView(thumbsView, page, i);
+      var thumbnailView = new ThumbnailView(thumbsView, page, currPage);
       bindOnAfterDraw(pageView, thumbnailView);
 
       // TODO(mack): handle when this.page is not the first page
@@ -1316,9 +1328,13 @@ var PDFView = {
 
       var pagesPromise = PDFJS.Promise.all(pagePromises);
       pagesPromise.then(function(promisedPages) {
-        for (var i = 1; i <= pagePromises.length; i++) {
-          var page = promisedPages[i - 1];
-          var pageView = new PageView(container, page, i, scale,
+        for (var i = 2; i <= pagesCount; i++) {
+
+          var pageElement = placeholderPages[i - 1].element;
+          delete placeholderPages[i - 1];
+
+          var page = promisedPages[i - 2];
+          var pageView = new PageView(container, pageElement, page, i, scale,
                                       page.stats, self.navigateTo.bind(self));
           var thumbnailView = new ThumbnailView(thumbsView, page, i);
           bindOnAfterDraw(pageView, thumbnailView);
@@ -1828,7 +1844,31 @@ var PDFView = {
   }
 };
 
-var PageView = function pageView(container, pdfPage, id, scale,
+var PlaceholderPageView = function placeholderPageView(
+    container, viewport, id) {
+
+  this.viewport = viewport;
+  var div = this.el = document.createElement('div');
+  div.id = 'pageContainer' + this.id;
+  div.className = 'page';
+  div.style.width = Math.floor(this.viewport.width) + 'px';
+  div.style.height = Math.floor(this.viewport.height) + 'px';
+
+  var anchor = document.createElement('a');
+  anchor.name = '' + this.id;
+
+  container.appendChild(anchor);
+  container.appendChild(div);
+
+  Object.defineProperty(this, 'element', {
+    get: function PLaceholderPageView_getElement() {
+      return div;
+    },
+    enumerable: true
+  });
+};
+
+var PageView = function pageView(container, element, pdfPage, id, scale,
                                  stats, navigateTo) {
   this.id = id;
   this.pdfPage = pdfPage;
@@ -1843,17 +1883,19 @@ var PageView = function pageView(container, pdfPage, id, scale,
   this.textContent = null;
   this.textLayer = null;
 
-  var anchor = document.createElement('a');
-  anchor.name = '' + this.id;
+  //var anchor = document.createElement('a');
+  //anchor.name = '' + this.id;
 
-  var div = this.el = document.createElement('div');
+  //var div = this.el = document.createElement('div');
+  var div = this.el = element;
   div.id = 'pageContainer' + this.id;
   div.className = 'page';
   div.style.width = Math.floor(this.viewport.width) + 'px';
   div.style.height = Math.floor(this.viewport.height) + 'px';
 
-  container.appendChild(anchor);
-  container.appendChild(div);
+  this.container = container;
+  //this.container.appendChild(anchor);
+  //this.container.appendChild(div);
 
   this.destroy = function pageViewDestroy() {
     this.update();
