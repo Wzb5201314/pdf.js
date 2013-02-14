@@ -20,9 +20,10 @@
 
 'use strict';
 
-var NetworkPdf = (function NetworkPdfClosure() {
+var pdfStream_;
+var BLOCK_SIZE = 64000;
 
-  var BLOCK_SIZE = 1024;
+var NetworkPdf = (function NetworkPdfClosure() {
 
   function loadPdf(begin, end, successCb, loadMoreFn) {
     PDFJS.getPdf(
@@ -37,8 +38,12 @@ var NetworkPdf = (function NetworkPdfClosure() {
         headers: this.httpHeaders
       },
       function getPdfLoad(data) {
+        if (data.loaded) {
+          successCb(data);
+          return;
+        }
         var chunkBegin = data.context.range.begin;
-        this.stream.onReceiveData(data.chunk, chunkBegin);
+        //this.stream.onReceiveData(chunk, chunkBegin);
         var range;
         // FIXME(mack): for xref's it will not come here until the second
         // request has been made since the first request will be to get
@@ -111,6 +116,8 @@ var NetworkPdf = (function NetworkPdfClosure() {
     var chunkEnd = data.context.range.begin + data.chunk.byteLength;
     var prevChunkSize = data.chunk.byteLength;
 
+    console.log('prevChunkSize', prevChunkSize);
+
     if (chunkEnd < data.length && missingEndToken) {
       return {
         begin: chunkEnd,
@@ -125,6 +132,7 @@ var NetworkPdf = (function NetworkPdfClosure() {
     this.msgHandler = msgHandler;
     this.pdfLength = pdfLength;
     this.stream = new ChunkedStream(pdfLength, BLOCK_SIZE);
+    pdfStream_ = this.stream;
     this.pdfModel = new PDFDocument(this.stream, source.password);
   }
 

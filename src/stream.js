@@ -109,6 +109,18 @@ var ChunkedStream = (function ChunkedStreamClosure() {
   // required methods for a stream. if a particular stream does not
   // implement these, an error should be thrown
   ChunkedStream.prototype = {
+    getNeededBlocks: function(beginByte, endByte) {
+      var beginBlock = Math.floor(beginByte / this.blockSize);
+      var endBlock = Math.floor((endByte - 1) / this.blockSize) + 1;
+      var neededBlocks = [];
+      for (var i = beginBlock; i < endBlock; ++i) {
+        if (this.blocksFilled[i]) {
+          continue;
+        }
+        neededBlocks.push(i);
+      }
+      return neededBlocks;
+    },
 
     onReceiveData: function(buffer, offset) {
       this.bytes.set(new Uint8Array(buffer), offset);
