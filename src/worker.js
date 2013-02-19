@@ -176,11 +176,23 @@ var WorkerMessageHandler = {
       handler.send('test', true);
     });
 
+    handler.on('SendDataRange', function wphSetupDoc(data) {
+      debugger;
+      var chunk = data.chunk;
+      var begin = data.begin;
+    });
+
     handler.on('GetDocRequest', function wphSetupDoc(data) {
+      debugger;
       var source = data.source;
       if (source.data) {
         // the data is array, instantiating directly from it
         loadDocument(source.data, source);
+        return;
+      } else if (source.chunked) {
+        debugger;
+        var url = source.url;
+        handler.send('RequestDataRange', { begin: 1000, end: 2000 });
         return;
       }
 

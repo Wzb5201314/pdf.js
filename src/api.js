@@ -38,6 +38,7 @@
  * @return {Promise} A promise that is resolved with {PDFDocumentProxy} object.
  */
 PDFJS.getDocument = function getDocument(source) {
+  debugger;
   var workerInitializedPromise, workerReadyPromise, transport;
 
   if (typeof source === 'string') {
@@ -64,9 +65,9 @@ PDFJS.getDocument = function getDocument(source) {
 
   workerInitializedPromise = new PDFJS.Promise();
   workerReadyPromise = new PDFJS.Promise();
-  transport = new WorkerTransport(workerInitializedPromise, workerReadyPromise);
+  transport = new WorkerTransport(workerInitializedPromise, workerReadyPromise, params);
   workerInitializedPromise.then(function transportInitialized() {
-    transport.fetchDocument(params);
+    transport.fetchDocument();
   });
   return workerReadyPromise;
 };
@@ -452,8 +453,10 @@ var PDFPageProxy = (function PDFPageProxyClosure() {
  * For internal use only.
  */
 var WorkerTransport = (function WorkerTransportClosure() {
-  function WorkerTransport(workerInitializedPromise, workerReadyPromise) {
+  function WorkerTransport(workerInitializedPromise, workerReadyPromise, source) {
+    debugger;
     this.workerReadyPromise = workerReadyPromise;
+    this.source = source;
     this.commonObjs = new PDFObjects();
 
     this.pageCache = [];
@@ -533,6 +536,31 @@ var WorkerTransport = (function WorkerTransportClosure() {
     setupMessageHandler:
       function WorkerTransport_setupMessageHandler(messageHandler) {
       this.messageHandler = messageHandler;
+
+      if (this.source.chunked) {
+        debugger;
+        window.addEventListener('message', function window_message(e) {
+          debugger;
+          var args = e.data;
+          if (args.pdfjsLoadAction !== 'chunk') {
+            return;
+          }
+
+          var chunk = args.chunk;
+          var begin = args.begin;
+          this.sendDataRange({ chunk: chunk, begin: begin });
+        }.bind(this));
+      }
+
+      messageHandler.on('RequestDataRange', function transportDataRange(data) {
+        debugger;
+        var begin = data.begin;
+        var end = data.end;
+        FirefoxCom.request(
+          'requestDataRange',
+          { begin: begin, end: end }
+        );
+      }, this);
 
       messageHandler.on('GetDoc', function transportDoc(data) {
         var pdfInfo = data.pdfInfo;
@@ -691,8 +719,17 @@ var WorkerTransport = (function WorkerTransportClosure() {
       });
     },
 
-    fetchDocument: function WorkerTransport_fetchDocument(source) {
-      this.messageHandler.send('GetDocRequest', {source: source});
+    sendDataRange: function WorkerTransport_sendDataRange(data) {
+      debugger;
+      var chunk = data.chunk;
+      var begin = data.begin;
+      this.messageHandler.send('SendDataRange',
+        { chunk: chunk, begin: begin });
+    },
+
+    fetchDocument: function WorkerTransport_fetchDocument() {
+      debugger;
+      this.messageHandler.send('GetDocRequest', { source: this.source });
     },
 
     getData: function WorkerTransport_getData(promise) {

@@ -918,16 +918,22 @@ var PDFView = {
       PDFView.loadingBar = new ProgressBar('#loadingBar', {});
     }
 
-    window.addEventListener('message', function window_message(e) {
+    function windowMessage(e) {
       var args = e.data;
 
       if (typeof args !== 'object' || !('pdfjsLoadAction' in args))
         return;
       switch (args.pdfjsLoadAction) {
+        case 'supportsChunk':
+          debugger;
+          window.removeEventListener('message', windowMessage);
+          PDFView.open({ url: args.pdfUrl, chunked: true }, 0);
+          break;
         case 'progress':
           PDFView.progress(args.loaded / args.total);
           break;
         case 'complete':
+          debugger;
           if (!args.data) {
             PDFView.error(mozL10n.get('loading_error', null,
                           'An error occurred while loading the PDF.'), e);
@@ -936,7 +942,8 @@ var PDFView = {
           PDFView.open(args.data, 0);
           break;
       }
-    });
+    };
+    window.addEventListener('message', windowMessage);
     FirefoxCom.requestSync('initPassiveLoading', null);
   },
 
@@ -959,12 +966,17 @@ var PDFView = {
   },
 
   open: function pdfViewOpen(url, scale, password) {
+    debugger;
     var parameters = {password: password};
     if (typeof url === 'string') { // URL
       this.setTitleUsingUrl(url);
       parameters.url = url;
     } else if (url && 'byteLength' in url) { // ArrayBuffer
       parameters.data = url;
+    } else {
+      this.setTitleUsingUrl(url.url);
+      parameters = url;
+      parameters.password = password;
     }
 
     if (!PDFView.loadingBar) {

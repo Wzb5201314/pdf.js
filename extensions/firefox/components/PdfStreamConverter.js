@@ -207,10 +207,11 @@ PdfDataListener.prototype = {
 };
 
 // All the priviledged actions.
-function ChromeActions(domWindow, dataListener, contentDispositionFilename) {
+function ChromeActions(domWindow, dataListener, contentDispositionFilename, pdfUrl) {
   this.domWindow = domWindow;
   this.dataListener = dataListener;
   this.contentDispositionFilename = contentDispositionFilename;
+  this.pdfUrl = pdfUrl;
 }
 
 ChromeActions.prototype = {
@@ -326,6 +327,19 @@ ChromeActions.prototype = {
     if (!this.dataListener)
       return false;
 
+    this.requestDataRangeHelper({ begin: 0, end: 1 }, function supportsRange() {
+      debugger;
+      this.dataListener.onprogress = function() {
+      };
+      this.dataListener.oncomplete = function() {
+        debugger;
+      };
+      domWindow.postMessage({
+        pdfjsLoadAction: 'supportsChunk',
+        pdfUrl: this.pdfUrl
+      }, '*');
+    }.bind(this));
+
     var domWindow = this.domWindow;
     this.dataListener.onprogress =
       function ChromeActions_dataListenerProgress(loaded, total) {
@@ -351,6 +365,63 @@ ChromeActions.prototype = {
 
     return true;
   },
+
+  requestDataRange: function(params) {
+    this.requestDataRangeHelper(params, function(data) {
+      debugger;
+      var domWindow = this.domWindow;
+      domWindow.postMessage({
+        pdfjsLoadAction: 'chunk',
+        begin: data.begin,
+        chunk: data.chunk
+      }, '*');
+    }.bind(this));
+  },
+
+  requestDataRangeHelper: function(data, callback) {
+    var begin = data.begin;
+    var end = data.end;
+
+    var rangeStr = begin + '-' + (end - 1);
+    const XMLHttpRequest = Components.Constructor("@mozilla.org/xmlextras/xmlhttprequest;1");
+    var xhr = XMLHttpRequest();
+
+    xhr.getArrayBuffer = function getPdfGetArrayBuffer() {
+      var data = (xhr.mozResponseArrayBuffer || xhr.mozResponse ||
+                  xhr.responseArrayBuffer || xhr.response);
+      if (typeof data !== 'string') {
+        return data;
+      }
+      var length = data.length;
+      var buffer = new Uint8Array(length);
+      for (var i = 0; i < length; i++) {
+        buffer[i] = data.charCodeAt(i) & 0xFF;
+      }
+      return buffer.buffer;
+    };
+
+    xhr.open('GET', this.pdfUrl);
+    xhr.setRequestHeader('Range', 'bytes=' + rangeStr);
+    xhr.mozResponseType = xhr.responseType = 'arraybuffer';
+
+    xhr.onerror = function errorBack(e) {
+      log('in error');
+    };
+
+    var domWindow = this.domWindow;
+    xhr.onreadystatechange = function getPdfOnreadystatechange(e) {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 206) {
+          var chunk = xhr.getArrayBuffer();
+          callback({ chunk: chunk, begin: begin });
+        } else {
+          debugger;
+        }
+      }
+    };
+    xhr.send(null);
+  },
+
   getStrings: function(data) {
     try {
       // Lazy initialization of localizedStrings
@@ -470,7 +541,8 @@ RequestListener.prototype.receive = function(event) {
     detail.response = response;
   } else {
     var response;
-    if (!event.detail.callback) {
+    var callback = event.detail.callback;
+    if (!callback) {
       doc.documentElement.removeChild(message);
       response = null;
     } else {
@@ -638,7 +710,8 @@ PdfStreamConverter.prototype = {
         // Double check the url is still the correct one.
         if (domWindow.document.documentURIObject.equals(aRequest.URI)) {
           var actions = new ChromeActions(domWindow, dataListener,
-                                          contentDispositionFilename);
+                                          contentDispositionFilename,
+                                          aRequest.URI.resolve(''));
           var requestListener = new RequestListener(actions);
           domWindow.addEventListener(PDFJS_EVENT_ID, function(event) {
             requestListener.receive(event);
