@@ -207,11 +207,12 @@ PdfDataListener.prototype = {
 };
 
 // All the priviledged actions.
-function ChromeActions(domWindow, dataListener, contentDispositionFilename, pdfUrl) {
+function ChromeActions(domWindow, dataListener, contentDispositionFilename, request) {
   this.domWindow = domWindow;
   this.dataListener = dataListener;
   this.contentDispositionFilename = contentDispositionFilename;
-  this.pdfUrl = pdfUrl;
+  this.pdfUrl = request.URI.resolve('');
+  this.request = request;
 }
 
 ChromeActions.prototype = {
@@ -334,6 +335,7 @@ ChromeActions.prototype = {
       this.dataListener.oncomplete = function() {
         debugger;
       };
+      this.request.cancel(Cr.NS_BINDING_ABORTED);
       domWindow.postMessage({
         pdfjsLoadAction: 'supportsChunk',
         pdfUrl: this.pdfUrl
@@ -353,6 +355,8 @@ ChromeActions.prototype = {
 
     this.dataListener.oncomplete =
       function ChromeActions_dataListenerComplete(data, errorCode) {
+
+      debugger;
 
       domWindow.postMessage({
         pdfjsLoadAction: 'complete',
@@ -711,7 +715,7 @@ PdfStreamConverter.prototype = {
         if (domWindow.document.documentURIObject.equals(aRequest.URI)) {
           var actions = new ChromeActions(domWindow, dataListener,
                                           contentDispositionFilename,
-                                          aRequest.URI.resolve(''));
+                                          aRequest);
           var requestListener = new RequestListener(actions);
           domWindow.addEventListener(PDFJS_EVENT_ID, function(event) {
             requestListener.receive(event);
@@ -755,12 +759,15 @@ PdfStreamConverter.prototype = {
       return;
     }
 
-    if (Components.isSuccessCode(aStatusCode))
-      this.dataListener.finish();
-    else
-      this.dataListener.error(aStatusCode);
-    delete this.dataListener;
-    delete this.binaryStream;
+    // TODO(mack): uncomment the following code when I figure out why
+    // request.cancel(); breaks this
+
+    //if (Components.isSuccessCode(aStatusCode))
+    //  this.dataListener.finish();
+    //else
+    //  this.dataListener.error(aStatusCode);
+    //delete this.dataListener;
+    //delete this.binaryStream;
   }
 };
 
