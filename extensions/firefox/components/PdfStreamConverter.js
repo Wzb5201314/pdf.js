@@ -207,12 +207,14 @@ PdfDataListener.prototype = {
 };
 
 // All the priviledged actions.
-function ChromeActions(domWindow, dataListener, contentDispositionFilename, request) {
+function ChromeActions(domWindow, dataListener, contentDispositionFilename,
+    request, pdfStreamConverter) {
   this.domWindow = domWindow;
   this.dataListener = dataListener;
   this.contentDispositionFilename = contentDispositionFilename;
   this.pdfUrl = request.URI.resolve('');
   this.request = request;
+  this.pdfStreamConverter = pdfStreamConverter;
 }
 
 ChromeActions.prototype = {
@@ -330,11 +332,13 @@ ChromeActions.prototype = {
 
     this.requestDataRangeHelper({ begin: 0, end: 1 }, function supportsRange() {
       debugger;
-      this.dataListener.onprogress = function() {
-      };
-      this.dataListener.oncomplete = function() {
-        debugger;
-      };
+      //this.dataListener.onprogress = function() {
+      //};
+      //this.dataListener.oncomplete = function() {
+      //  debugger;
+      //};
+      delete this.pdfStreamConverter.dataListener;
+      delete this.pdfStreamConverter.binaryStream;
       this.request.cancel(Cr.NS_BINDING_ABORTED);
       domWindow.postMessage({
         pdfjsLoadAction: 'supportsChunk',
@@ -695,6 +699,7 @@ PdfStreamConverter.prototype = {
     var channel = ioService.newChannel(
                     PDF_VIEWER_WEB_PAGE, null, null);
 
+    var self = this;
     var listener = this.listener;
     // Proxy all the request observer calls, when it gets to onStopRequest
     // we can get the dom window.  We also intentionally pass on the original
@@ -713,9 +718,9 @@ PdfStreamConverter.prototype = {
         var domWindow = getDOMWindow(channel);
         // Double check the url is still the correct one.
         if (domWindow.document.documentURIObject.equals(aRequest.URI)) {
-          var actions = new ChromeActions(domWindow, dataListener,
-                                          contentDispositionFilename,
-                                          aRequest);
+          var actions = new ChromeActions(
+              domWindow, dataListener, contentDispositionFilename, aRequest,
+              self);
           var requestListener = new RequestListener(actions);
           domWindow.addEventListener(PDFJS_EVENT_ID, function(event) {
             requestListener.receive(event);
@@ -762,12 +767,12 @@ PdfStreamConverter.prototype = {
     // TODO(mack): uncomment the following code when I figure out why
     // request.cancel(); breaks this
 
-    //if (Components.isSuccessCode(aStatusCode))
-    //  this.dataListener.finish();
-    //else
-    //  this.dataListener.error(aStatusCode);
-    //delete this.dataListener;
-    //delete this.binaryStream;
+    if (Components.isSuccessCode(aStatusCode))
+      this.dataListener.finish();
+    else
+      this.dataListener.error(aStatusCode);
+    delete this.dataListener;
+    delete this.binaryStream;
   }
 };
 
