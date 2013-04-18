@@ -61,7 +61,7 @@ var BasePdfManager = (function BasePdfManagerClosure() {
 var LocalPdfManager = (function LocalPdfManagerClosure() {
   function LocalPdfManager(data, password) {
     var stream = new Stream(data);
-    this.pdfModel = new PDFDocument(stream, password);
+    this.pdfModel = new PDFDocument(this, stream, password);
     this.loadedStream = new PDFJS.Promise();
     this.loadedStream.resolve(stream);
   }
@@ -117,7 +117,7 @@ var NetworkPdfManager = (function NetworkPdfManagerClosure() {
     this.streamManager = new ChunkedStreamManager(args.length, CHUNK_SIZE,
                                                   args.url, params);
 
-    this.pdfModel = new PDFDocument(this.streamManager.getStream(),
+    this.pdfModel = new PDFDocument(this, this.streamManager.getStream(),
                                     args.password);
   }
 

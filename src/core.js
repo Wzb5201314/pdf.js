@@ -60,7 +60,8 @@ var Page = (function PageClosure() {
     return appearance;
   }
 
-  function Page(xref, pageIndex, pageDict, ref) {
+  function Page(pdfManager, xref, pageIndex, pageDict, ref) {
+    this.pdfManager = pdfManager;
     this.pageIndex = pageIndex;
     this.pageDict = pageDict;
     this.xref = xref;
@@ -153,8 +154,7 @@ var Page = (function PageClosure() {
       var pageListPromise = new PDFJS.Promise();
       var annotationListPromise = new PDFJS.Promise();
 
-      // FIXME(mack): Remove globalScope;
-      var pdfManager = globalScope.pdfManager;
+      var pdfManager = this.pdfManager;
       var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
                                                    []);
       var resourcesPromise = pdfManager.ensure(this, 'resources');
@@ -223,8 +223,7 @@ var Page = (function PageClosure() {
 
       var textContentPromise = new PDFJS.Promise();
 
-      // FIXME(mack): Remove globalScope;
-      var pdfManager = globalScope.pdfManager;
+      var pdfManager = this.pdfManager;
       var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
                                                    []);
       var resourcesPromise = new PDFJS.Promise();
@@ -492,17 +491,18 @@ var Page = (function PageClosure() {
  * `PDFDocument` objects on the main thread created.
  */
 var PDFDocument = (function PDFDocumentClosure() {
-  function PDFDocument(arg, password) {
+  function PDFDocument(pdfManager, arg, password) {
     if (isStream(arg))
-      init.call(this, arg, password);
+      init.call(this, pdfManager, arg, password);
     else if (isArrayBuffer(arg))
-      init.call(this, new Stream(arg), password);
+      init.call(this, pdfManager, new Stream(arg), password);
     else
       error('PDFDocument: Unknown argument type');
   }
 
-  function init(stream, password) {
+  function init(pdfManager, stream, password) {
     assertWellFormed(stream.length > 0, 'stream must have data');
+    this.pdfManager = pdfManager;
     this.stream = stream;
     var xref = new XRef(this.stream, password);
     this.xref = xref;
@@ -646,7 +646,7 @@ var PDFDocument = (function PDFDocumentClosure() {
     },
     setup: function PDFDocument_setup(recoveryMode) {
       this.xref.parse(recoveryMode);
-      this.catalog = new Catalog(this.xref);
+      this.catalog = new Catalog(this.pdfManager, this.xref);
     },
     get numPages() {
       var linearization = this.linearization;

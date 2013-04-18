@@ -151,7 +151,8 @@ var RefSet = (function RefSetClosure() {
 })();
 
 var Catalog = (function CatalogClosure() {
-  function Catalog(xref) {
+  function Catalog(pdfManager, xref) {
+    this.pdfManager = pdfManager;
     this.xref = xref;
     this.catDict = xref.getCatalogObj();
     assertWellFormed(isDict(this.catDict),
@@ -363,7 +364,8 @@ var Catalog = (function CatalogClosure() {
         var kid = this.xref.fetch(kidRef);
         if (isDict(kid, 'Page') || (isDict(kid) && !kid.has('Kids'))) {
           var pageIndex = this.currPageIndex++;
-          var page = new Page(this.xref, pageIndex, kid, kidRef);
+          var page = new Page(this.pdfManager, this.xref, pageIndex, kid,
+                              kidRef);
           if (!(pageIndex in this.pagePromises)) {
             this.pagePromises[pageIndex] = new PDFJS.Promise();
           }
