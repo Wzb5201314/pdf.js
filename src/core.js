@@ -155,7 +155,8 @@ var Page = (function PageClosure() {
 
       // FIXME(mack): Remove globalScope;
       var pdfManager = globalScope.pdfManager;
-      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream');
+      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
+                                                   []);
       var resourcesPromise = pdfManager.ensure(this, 'resources');
       var dataPromises = PDFJS.Promise.all(
           [contentStreamPromise, resourcesPromise]);
@@ -166,7 +167,8 @@ var Page = (function PageClosure() {
                                   self.xref, handler, self.pageIndex,
                                   'p' + self.pageIndex + '_');
 
-        pdfManager.ensure(pe, 'getOperatorList', contentStream, resources).then(
+        pdfManager.ensure(pe, 'getOperatorList',
+                          [contentStream, resources]).then(
           function(opListPromise) {
             opListPromise.then(function(data) {
               pageListPromise.resolve(data);
@@ -175,14 +177,14 @@ var Page = (function PageClosure() {
         );
       });
 
-      pdfManager.ensure(this, 'getAnnotationsForDraw').then(
+      pdfManager.ensure(this, 'getAnnotationsForDraw', []).then(
         function(annotations) {
           var annotationEvaluator = new PartialEvaluator(
             self.xref, handler, self.pageIndex,
             'p' + self.pageIndex + '_annotation');
 
           pdfManager.ensure(annotationEvaluator, 'getAnnotationsOperatorList',
-                            annotations).then(
+                            [annotations]).then(
             function(opListPromise) {
               opListPromise.then(function(data) {
                 annotationListPromise.resolve(data);
@@ -223,10 +225,11 @@ var Page = (function PageClosure() {
 
       // FIXME(mack): Remove globalScope;
       var pdfManager = globalScope.pdfManager;
-      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream');
+      var contentStreamPromise = pdfManager.ensure(this, 'getContentStream',
+                                                   []);
       var resourcesPromise = new PDFJS.Promise();
       pdfManager.ensure(this, 'resources').then(function(resources) {
-        pdfManager.ensure(self.xref, 'fetchIfRef', resources).then(
+        pdfManager.ensure(self.xref, 'fetchIfRef', [resources]).then(
           function(resources) {
             resourcesPromise.resolve(resources);
           }
